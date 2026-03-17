@@ -1,0 +1,7 @@
+{
+  "name": "VelaCore Analytics",
+  "description": "A high-fidelity forensic auditing ecosystem providing authoritative analytics and digital luxury through proprietary forensic protocols and AI-driven insights.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
