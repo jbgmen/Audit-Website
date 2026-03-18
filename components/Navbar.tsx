@@ -1,216 +1,486 @@
-
-import React, { useState, useRef, useEffect } from 'react';
-import Logo from './Logo';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, User } from '../types';
 
-interface Props {
+interface NavbarProps {
+  user: User | null;
   setView: (view: View) => void;
   activeView: View;
-  user?: User | null;
 }
 
-const Navbar: React.FC<Props> = ({ setView, activeView, user }) => {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+const RESOURCES_ITEMS = [
+  { label: 'Documentation',   icon: '📄', desc: 'Integration guides & API docs',  view: 'docs'      as View },
+  { label: 'Standards',       icon: '⚖️',  desc: 'Audit methodology & criteria',  view: 'standards' as View },
+  { label: 'Branding Kit',    icon: '🎨', desc: 'Assets, logos & guidelines',     view: 'branding'  as View },
+  { label: 'Verification',    icon: '🔍', desc: 'Verify an audit certificate',    view: 'verify'    as View },
+];
 
-  const mainLinks = [
-    { id: 'audit', label: 'Audit Engine' },
-    { id: 'pricing', label: 'Pricing' },
-    { id: 'vault', label: 'Vault' },
+export default function Navbar({ user, setView, activeView }: NavbarProps) {
+  const [scrolled,       setScrolled]       = useState(false);
+  const [resourcesOpen,  setResourcesOpen]  = useState(false);
+  const [mobileOpen,     setMobileOpen]     = useState(false);
+  const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0, opacity: 0 });
+  const navRef      = useRef<HTMLDivElement>(null);
+  const resourceRef = useRef<HTMLDivElement>(null);
+
+  // Scroll blur effect
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Close resources dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (resourceRef.current && !resourceRef.current.contains(e.target as Node)) {
+        setResourcesOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Magnetic hover indicator for nav links
+  function handleNavHover(e: React.MouseEvent<HTMLButtonElement>) {
+    const el   = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+    const nav  = navRef.current;
+    if (!nav) return;
+    const navRect = nav.getBoundingClientRect();
+    setIndicatorStyle({
+      left:    rect.left - navRect.left,
+      width:   rect.width,
+      opacity: 1,
+    });
+  }
+  function handleNavLeave() {
+    setIndicatorStyle(s => ({ ...s, opacity: 0 }));
+  }
+
+  const navLinks = [
+    { label: 'Audit Engine', view: 'audit'   as View },
+    { label: 'Pricing',      view: 'pricing' as View },
+    { label: 'Vault',        view: 'vault'   as View },
   ];
 
-  const resourceLinks = [
-    { id: 'docs', label: 'Framework & Docs', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253v13' },
-    { id: 'standards', label: 'Forensic Standards', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-    { id: 'branding', label: 'Identity Assets', icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
-    { id: 'privacy', label: 'Privacy Protocol', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
-    { id: 'terms', label: 'Terms of Registry', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
-  ];
-
-  const handleNavClick = (view: View) => {
-    setView(view);
-    setIsMenuOpen(false);
-    setIsDropdownOpen(false);
+  const tier        = user?.tier || 'Free';
+  const tierColors: Record<string, string> = {
+    Free:   '#6b7280',
+    Basic:  '#3b82f6',
+    Pro:    '#8b5cf6',
+    Agency: '#d4a017',
   };
 
   return (
-    <div className="sticky top-0 z-[60] w-full border-b border-slate-100 bg-white/95 backdrop-blur-xl">
-      <nav className="w-full flex items-center justify-between px-6 md:px-12 py-1.5 md:py-2">
-        <button 
-          onClick={() => handleNavClick('home')} 
-          className="hover:opacity-80 transition-opacity flex-shrink-0"
-        >
-          <Logo type="horizontal" inverse={false} className="h-12 sm:h-16 md:h-20 lg:h-22" />
-        </button>
-        
-        <div className="hidden lg:flex items-center gap-10">
-          {mainLinks.map((link) => (
-            <button
-              key={link.id}
-              onClick={() => handleNavClick(link.id as View)}
-              className={`text-[9px] font-black uppercase tracking-[0.35em] transition-all duration-300 relative group whitespace-nowrap ${
-                activeView === link.id ? 'text-primary' : 'text-slate-400 hover:text-primary'
-              }`}
-            >
-              {link.label}
-              <span className={`absolute -bottom-1 left-0 h-[2px] bg-accent transition-all duration-300 ${
-                activeView === link.id ? 'w-full' : 'w-0 group-hover:w-full'
-              }`} />
-            </button>
-          ))}
+    <>
+      <style>{`
+        .vc-navbar {
+          position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+          transition: all 0.3s ease;
+        }
+        .vc-navbar.scrolled {
+          background: rgba(255,255,255,0.92);
+          backdrop-filter: blur(20px) saturate(180%);
+          -webkit-backdrop-filter: blur(20px) saturate(180%);
+          box-shadow: 0 1px 0 rgba(0,0,0,0.08), 0 4px 24px rgba(0,0,0,0.06);
+        }
+        .vc-navbar.top {
+          background: rgba(255,255,255,0.95);
+          border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        .vc-inner {
+          max-width: 1280px; margin: 0 auto;
+          padding: 0 24px;
+          height: 68px;
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 32px;
+        }
 
-          <div 
-            className="relative"
-            onMouseEnter={() => setIsDropdownOpen(true)}
-            onMouseLeave={() => setIsDropdownOpen(false)}
-          >
-            <button
-              className={`text-[9px] font-black uppercase tracking-[0.35em] transition-all duration-300 flex items-center gap-2 ${
-                resourceLinks.some(l => activeView === l.id) ? 'text-primary' : 'text-slate-400 hover:text-primary'
-              }`}
-            >
-              Resources
-              <svg className={`w-3 h-3 transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 9l-7 7-7-7" />
+        /* Logo */
+        .vc-logo {
+          display: flex; align-items: center; gap: 10px;
+          cursor: pointer; text-decoration: none; flex-shrink: 0;
+          transition: opacity 0.2s;
+        }
+        .vc-logo:hover { opacity: 0.85; }
+        .vc-logo-mark {
+          width: 36px; height: 36px; position: relative;
+        }
+        .vc-logo-mark svg { width: 100%; height: 100%; }
+        .vc-logo-text { display: flex; flex-direction: column; line-height: 1; }
+        .vc-logo-name {
+          font-family: 'Georgia', 'Times New Roman', serif;
+          font-size: 17px; font-weight: 700; letter-spacing: -0.2px;
+          color: #0f172a;
+        }
+        .vc-logo-sub {
+          font-size: 9px; font-weight: 700; letter-spacing: 0.25em;
+          color: #d4a017; text-transform: uppercase; margin-top: 1px;
+        }
+
+        /* Status pill */
+        .vc-status {
+          display: flex; align-items: center; gap: 6px;
+          padding: 4px 10px; border-radius: 20px;
+          background: rgba(212,160,23,0.08); border: 1px solid rgba(212,160,23,0.2);
+          font-size: 10px; font-weight: 700; color: #b8860b;
+          letter-spacing: 0.06em; text-transform: uppercase;
+          flex-shrink: 0;
+        }
+        .vc-status-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #22c55e;
+          box-shadow: 0 0 0 2px rgba(34,197,94,0.25);
+          animation: vcPulse 2s infinite;
+        }
+        @keyframes vcPulse {
+          0%, 100% { box-shadow: 0 0 0 2px rgba(34,197,94,0.25); }
+          50%       { box-shadow: 0 0 0 5px rgba(34,197,94,0.1); }
+        }
+
+        /* Nav links */
+        .vc-nav { display: flex; align-items: center; position: relative; }
+        .vc-nav-indicator {
+          position: absolute; bottom: -2px; height: 2px;
+          background: #d4a017; border-radius: 2px;
+          transition: all 0.25s cubic-bezier(0.4,0,0.2,1);
+          pointer-events: none;
+        }
+        .vc-nav-btn {
+          background: none; border: none; cursor: pointer;
+          padding: 8px 14px; border-radius: 8px;
+          font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+          text-transform: uppercase; color: #374151;
+          transition: color 0.2s;
+          white-space: nowrap;
+        }
+        .vc-nav-btn:hover { color: #0f172a; }
+        .vc-nav-btn.active { color: #0f172a; }
+
+        /* Resources dropdown */
+        .vc-resources { position: relative; }
+        .vc-resources-btn {
+          display: flex; align-items: center; gap: 5px;
+          background: none; border: none; cursor: pointer;
+          padding: 8px 14px; border-radius: 8px;
+          font-size: 12px; font-weight: 600; letter-spacing: 0.06em;
+          text-transform: uppercase; color: #374151;
+          transition: color 0.2s;
+        }
+        .vc-resources-btn:hover { color: #0f172a; }
+        .vc-chevron {
+          width: 14px; height: 14px;
+          transition: transform 0.25s ease;
+        }
+        .vc-chevron.open { transform: rotate(180deg); }
+        .vc-dropdown {
+          position: absolute; top: calc(100% + 12px); right: 0;
+          width: 280px;
+          background: #fff;
+          border: 1px solid rgba(0,0,0,0.08);
+          border-radius: 16px;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.06);
+          padding: 8px;
+          opacity: 0; visibility: hidden; transform: translateY(-8px);
+          transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
+          z-index: 200;
+        }
+        .vc-dropdown.open {
+          opacity: 1; visibility: visible; transform: translateY(0);
+        }
+        .vc-dropdown-item {
+          display: flex; align-items: center; gap: 12px;
+          padding: 11px 14px; border-radius: 10px;
+          cursor: pointer; transition: background 0.15s;
+          border: none; background: none; width: 100%; text-align: left;
+        }
+        .vc-dropdown-item:hover { background: #f9fafb; }
+        .vc-dropdown-icon {
+          width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+          background: #f3f4f6; display: flex; align-items: center; justify-content: center;
+          font-size: 16px;
+        }
+        .vc-dropdown-label {
+          font-size: 13px; font-weight: 700; color: #0f172a; margin-bottom: 2px;
+        }
+        .vc-dropdown-desc {
+          font-size: 11px; color: #9ca3af;
+        }
+        .vc-dropdown-divider {
+          height: 1px; background: #f3f4f6; margin: 6px 8px;
+        }
+
+        /* Right actions */
+        .vc-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+        /* Tier badge */
+        .vc-tier {
+          display: flex; align-items: center; gap: 6px;
+          padding: 5px 10px; border-radius: 20px;
+          font-size: 10px; font-weight: 800; letter-spacing: 0.06em;
+          text-transform: uppercase; border: 1px solid; cursor: pointer;
+          transition: opacity 0.2s;
+        }
+        .vc-tier:hover { opacity: 0.8; }
+
+        /* Avatar */
+        .vc-avatar {
+          width: 34px; height: 34px; border-radius: 50%;
+          background: #0f172a; color: #d4a017;
+          display: flex; align-items: center; justify-content: center;
+          font-size: 13px; font-weight: 800; cursor: pointer;
+          border: 2px solid rgba(212,160,23,0.3);
+          transition: border-color 0.2s;
+          overflow: hidden;
+        }
+        .vc-avatar:hover { border-color: #d4a017; }
+        .vc-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Sign in */
+        .vc-signin {
+          background: none; border: 1px solid rgba(0,0,0,0.15);
+          border-radius: 8px; padding: 8px 16px; cursor: pointer;
+          font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+          color: #374151; transition: all 0.2s;
+        }
+        .vc-signin:hover { border-color: #0f172a; color: #0f172a; background: #f9fafb; }
+
+        /* CTA button */
+        .vc-cta {
+          display: flex; align-items: center; gap: 8px;
+          background: #0f172a; color: #fff;
+          border: none; border-radius: 9px; padding: 9px 20px;
+          font-size: 12px; font-weight: 800; letter-spacing: 0.08em;
+          text-transform: uppercase; cursor: pointer;
+          transition: all 0.2s; white-space: nowrap;
+          box-shadow: 0 2px 8px rgba(15,23,42,0.25);
+        }
+        .vc-cta:hover {
+          background: #1e293b;
+          box-shadow: 0 4px 16px rgba(15,23,42,0.35);
+          transform: translateY(-1px);
+        }
+        .vc-cta:active { transform: none; }
+        .vc-cta-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: #d4a017;
+        }
+
+        /* Protocol tag on CTA */
+        .vc-cta-tag {
+          font-size: 9px; background: rgba(212,160,23,0.2);
+          color: #d4a017; border-radius: 4px; padding: 1px 5px;
+          letter-spacing: 0.08em; font-weight: 800;
+        }
+
+        /* Mobile hamburger */
+        .vc-hamburger {
+          display: none; flex-direction: column; gap: 5px;
+          background: none; border: none; cursor: pointer; padding: 8px;
+        }
+        .vc-hamburger span {
+          display: block; width: 22px; height: 2px;
+          background: #0f172a; border-radius: 2px;
+          transition: all 0.25s;
+        }
+        .vc-hamburger.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+        .vc-hamburger.open span:nth-child(2) { opacity: 0; }
+        .vc-hamburger.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+
+        /* Mobile drawer */
+        .vc-mobile-drawer {
+          display: none; position: fixed; top: 68px; left: 0; right: 0; bottom: 0;
+          background: #fff; z-index: 99; padding: 24px;
+          flex-direction: column; gap: 8px;
+          border-top: 1px solid rgba(0,0,0,0.06);
+          overflow-y: auto;
+        }
+        .vc-mobile-drawer.open { display: flex; }
+        .vc-mobile-link {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 14px 16px; border-radius: 12px;
+          font-size: 15px; font-weight: 700; color: #0f172a;
+          cursor: pointer; transition: background 0.15s;
+          background: none; border: none; width: 100%; text-align: left;
+        }
+        .vc-mobile-link:hover { background: #f9fafb; }
+        .vc-mobile-link.active { background: rgba(212,160,23,0.08); color: #b8860b; }
+        .vc-mobile-divider { height: 1px; background: #f3f4f6; margin: 8px 0; }
+        .vc-mobile-cta {
+          margin-top: 8px; background: #0f172a; color: #fff;
+          border: none; border-radius: 12px; padding: 16px;
+          font-size: 14px; font-weight: 800; letter-spacing: 0.06em;
+          text-transform: uppercase; cursor: pointer; width: 100%;
+          transition: background 0.2s;
+        }
+        .vc-mobile-cta:hover { background: #1e293b; }
+
+        @media (max-width: 900px) {
+          .vc-nav, .vc-status, .vc-resources,
+          .vc-signin, .vc-cta { display: none !important; }
+          .vc-hamburger { display: flex !important; }
+        }
+        @media (max-width: 640px) {
+          .vc-inner { padding: 0 16px; }
+        }
+      `}</style>
+
+      <nav className={`vc-navbar ${scrolled ? 'scrolled' : 'top'}`}>
+        <div className="vc-inner">
+
+          {/* Logo */}
+          <button className="vc-logo" onClick={() => setView('home')} style={{ background: 'none', border: 'none', padding: 0 }}>
+            <div className="vc-logo-mark">
+              <svg viewBox="0 0 36 36" fill="none">
+                <polygon points="18,2 34,10 34,26 18,34 2,26 2,10" fill="#0f172a" />
+                <polygon points="18,7 29,13 29,25 18,31 7,25 7,13" fill="none" stroke="#d4a017" strokeWidth="1.5" />
+                <path d="M13 18l4 4 6-7" stroke="#d4a017" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-            </button>
+            </div>
+            <div className="vc-logo-text">
+              <span className="vc-logo-name">VelaCore</span>
+              <span className="vc-logo-sub">Analytics</span>
+            </div>
+          </button>
 
-            <div 
-              className={`absolute top-full -left-10 pt-4 transition-all duration-300 ${
-                isDropdownOpen ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 -translate-y-2 pointer-events-none'
-              }`}
-            >
-              <div className="w-64 bg-white border border-slate-100 rounded-[2rem] shadow-[0_40px_80px_rgba(0,0,0,0.1)] p-4 overflow-hidden">
-                <div className="space-y-1">
-                  {resourceLinks.map((link) => (
-                    <button
-                      key={link.id}
-                      onClick={() => handleNavClick(link.id as View)}
-                      className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all group/item ${
-                        activeView === link.id ? 'bg-slate-50 text-primary' : 'hover:bg-slate-50 text-slate-500 hover:text-primary'
-                      }`}
-                    >
-                      <svg className="w-5 h-5 shrink-0 opacity-40 group-hover/item:opacity-100 group-hover/item:text-accent transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={link.icon} />
-                      </svg>
-                      <span className="text-[10px] font-black uppercase tracking-widest">{link.label}</span>
+          {/* Center — status pill + nav */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flex: 1, justifyContent: 'center' }}>
+            <div className="vc-status">
+              <div className="vc-status-dot" />
+              PROTOCOL v2.5 ACTIVE
+            </div>
+
+            <div className="vc-nav" ref={navRef} onMouseLeave={handleNavLeave}>
+              <div className="vc-nav-indicator" style={{ left: indicatorStyle.left, width: indicatorStyle.width, opacity: indicatorStyle.opacity }} />
+              {navLinks.map(link => (
+                <button
+                  key={link.view}
+                  className={`vc-nav-btn ${activeView === link.view ? 'active' : ''}`}
+                  onClick={() => setView(link.view)}
+                  onMouseEnter={handleNavHover}
+                >
+                  {link.label}
+                </button>
+              ))}
+
+              {/* Resources dropdown */}
+              <div className="vc-resources" ref={resourceRef}>
+                <button
+                  className="vc-resources-btn"
+                  onClick={() => setResourcesOpen(!resourcesOpen)}
+                  onMouseEnter={handleNavHover}
+                >
+                  Resources
+                  <svg className={`vc-chevron ${resourcesOpen ? 'open' : ''}`} viewBox="0 0 14 14" fill="none">
+                    <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+
+                <div className={`vc-dropdown ${resourcesOpen ? 'open' : ''}`}>
+                  {RESOURCES_ITEMS.slice(0, 2).map(item => (
+                    <button key={item.view} className="vc-dropdown-item"
+                      onClick={() => { setView(item.view); setResourcesOpen(false); }}>
+                      <div className="vc-dropdown-icon">{item.icon}</div>
+                      <div>
+                        <div className="vc-dropdown-label">{item.label}</div>
+                        <div className="vc-dropdown-desc">{item.desc}</div>
+                      </div>
+                    </button>
+                  ))}
+                  <div className="vc-dropdown-divider" />
+                  {RESOURCES_ITEMS.slice(2).map(item => (
+                    <button key={item.view} className="vc-dropdown-item"
+                      onClick={() => { setView(item.view); setResourcesOpen(false); }}>
+                      <div className="vc-dropdown-icon">{item.icon}</div>
+                      <div>
+                        <div className="vc-dropdown-label">{item.label}</div>
+                        <div className="vc-dropdown-desc">{item.desc}</div>
+                      </div>
                     </button>
                   ))}
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-4">
-          <button 
-            onClick={() => handleNavClick('audit')}
-            className="hidden sm:block px-6 py-2.5 bg-primary text-white text-[9px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all active:scale-95 shadow-sm rounded-xl"
-          >
-            Initiate Protocol
-          </button>
+          {/* Right actions */}
+          <div className="vc-actions">
+            {user ? (
+              <>
+                {/* Tier badge */}
+                <button
+                  className="vc-tier"
+                  onClick={() => setView('pricing')}
+                  style={{ color: tierColors[tier], borderColor: tierColors[tier] + '40', background: tierColors[tier] + '12' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: tierColors[tier], display: 'inline-block' }} />
+                  {tier}
+                </button>
 
-          {user ? (
-            <button 
-              onClick={() => handleNavClick('profile')}
-              className="flex items-center gap-3 pl-3 pr-1 py-1 bg-slate-50 border border-slate-100 rounded-2xl hover:bg-slate-100 transition-all group"
-            >
-              <div className="hidden md:block text-right">
-                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">Operator</p>
-                <p className="text-[10px] font-bold text-slate-900 truncate max-w-[80px]">{user.name}</p>
-              </div>
-              <div className="w-8 h-8 rounded-xl overflow-hidden border border-slate-200 shadow-sm group-hover:ring-2 group-hover:ring-accent/30 transition-all bg-slate-900 flex items-center justify-center">
-                {user.avatar ? (
-                   <img 
-                    src={user.avatar} 
-                    alt="Profile" 
-                    className="w-full h-full object-cover" 
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = 'none';
-                      const parent = (e.target as HTMLImageElement).parentElement;
-                      if (parent) parent.innerHTML = `<span class="text-[10px] font-black text-accent uppercase">${(user.name?.[0] || user.email?.[0]).toUpperCase()}</span>`;
-                    }}
-                  />
-                ) : (
-                  <span className="text-[10px] font-black text-accent uppercase">{(user.name?.[0] || user.email?.[0]).toUpperCase()}</span>
-                )}
-              </div>
+                {/* Avatar */}
+                <button className="vc-avatar" onClick={() => setView('profile')} title={user.name || user.email}>
+                  {user.avatar
+                    ? <img src={user.avatar} alt={user.name} />
+                    : (user.name?.[0] || user.email[0]).toUpperCase()
+                  }
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="vc-signin" onClick={() => setView('auth')}>Sign In</button>
+              </>
+            )}
+
+            <button className="vc-cta" onClick={() => setView('audit')}>
+              <div className="vc-cta-dot" />
+              Initiate Protocol
+              <span className="vc-cta-tag">FREE</span>
             </button>
-          ) : (
-            <button 
-              onClick={() => handleNavClick('auth')}
-              className="px-6 py-2.5 bg-white border border-slate-200 text-slate-900 text-[9px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all active:scale-95 rounded-xl"
-            >
-              Sign In
-            </button>
-          )}
+          </div>
 
-          <button 
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="lg:hidden w-10 h-10 flex flex-col items-center justify-center transition-all relative"
-            aria-label="Toggle Menu"
-          >
-            <div className="relative w-6 h-5">
-              <div className={`absolute left-0 w-6 h-[2.5px] bg-primary transition-all duration-300 rounded-full ${isMenuOpen ? 'top-1/2 -translate-y-1/2 rotate-45' : 'top-0'}`} />
-              <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-6 h-[2.5px] bg-primary transition-all duration-300 rounded-full ${isMenuOpen ? 'opacity-0 scale-0' : 'opacity-100'}`} />
-              <div className={`absolute left-0 w-6 h-[2.5px] bg-primary transition-all duration-300 rounded-full ${isMenuOpen ? 'top-1/2 -translate-y-1/2 -rotate-45' : 'bottom-0'}`} />
-            </div>
+          {/* Mobile hamburger */}
+          <button className={`vc-hamburger ${mobileOpen ? 'open' : ''}`} onClick={() => setMobileOpen(!mobileOpen)}>
+            <span /><span /><span />
           </button>
         </div>
       </nav>
 
-      {isMenuOpen && (
-        <div className="lg:hidden absolute top-full left-0 right-0 bg-white border-b border-slate-100 shadow-2xl animate-in fade-in slide-in-from-top-4 flex flex-col p-6 space-y-2 max-h-[85vh] overflow-y-auto">
-          {/* Main Navigation Section */}
-          <div className="mb-4">
-            <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] mb-4 ml-4">Core Console</p>
-            {mainLinks.map((link) => (
-              <button
-                key={link.id}
-                onClick={() => handleNavClick(link.id as View)}
-                className={`w-full text-left py-4 px-5 text-[11px] font-black uppercase tracking-[0.2em] transition-all rounded-2xl mb-1 ${
-                  activeView === link.id ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                {link.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="h-px w-full bg-slate-100 my-4"></div>
-
-          {/* Resources Section */}
-          <div className="pb-6">
-            <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] mb-4 ml-4">Registry Intelligence</p>
-            <div className="grid grid-cols-1 gap-2">
-              {resourceLinks.map((link) => (
-                <button
-                  key={link.id}
-                  onClick={() => handleNavClick(link.id as View)}
-                  className={`w-full flex items-center gap-5 py-4 px-5 rounded-2xl transition-all group ${
-                    activeView === link.id ? 'bg-slate-50 text-primary border border-slate-100' : 'text-slate-500 hover:bg-slate-50'
-                  }`}
-                >
-                  <svg className={`w-5 h-5 shrink-0 ${activeView === link.id ? 'text-accent' : 'opacity-40 group-hover:opacity-100 group-hover:text-accent'} transition-all`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d={link.icon} />
-                  </svg>
-                  <span className="text-[10px] font-black uppercase tracking-widest">{link.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          <button 
-            onClick={() => handleNavClick('audit')}
-            className="w-full py-5 bg-accent text-primary text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl shadow-xl shadow-accent/20"
-          >
-            Initiate Forensic Protocol
+      {/* Mobile drawer */}
+      <div className={`vc-mobile-drawer ${mobileOpen ? 'open' : ''}`}>
+        {navLinks.map(link => (
+          <button key={link.view} className={`vc-mobile-link ${activeView === link.view ? 'active' : ''}`}
+            onClick={() => { setView(link.view); setMobileOpen(false); }}>
+            {link.label}
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>→</span>
           </button>
-        </div>
-      )}
-    </div>
-  );
-};
+        ))}
+        {RESOURCES_ITEMS.map(item => (
+          <button key={item.view} className="vc-mobile-link"
+            onClick={() => { setView(item.view); setMobileOpen(false); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {item.icon} {item.label}
+            </span>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>→</span>
+          </button>
+        ))}
+        <div className="vc-mobile-divider" />
+        {user ? (
+          <button className="vc-mobile-link" onClick={() => { setView('profile'); setMobileOpen(false); }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              👤 {user.name || user.email}
+            </span>
+          </button>
+        ) : (
+          <button className="vc-mobile-link" onClick={() => { setView('auth'); setMobileOpen(false); }}>
+            Sign In →
+          </button>
+        )}
+        <button className="vc-mobile-cta" onClick={() => { setView('audit'); setMobileOpen(false); }}>
+          ◆ Initiate Protocol — Free
+        </button>
+      </div>
 
-export default Navbar;
+      {/* Spacer */}
+      <div style={{ height: 68 }} />
+    </>
+  );
+}
