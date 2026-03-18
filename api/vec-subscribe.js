@@ -1,6 +1,11 @@
+// api/vec-subscribe.js
+// Vercel Serverless Function — VEC payment verifier + Firebase tier upgrader
+// Always returns JSON — never crashes silently
+
 const https = require('https')
 const http  = require('http')
 
+// ── Config ────────────────────────────────────────────────────────────────────
 const RPC_URL       = process.env.RPC_URL       || 'https://data-seed-prebsc-1-s1.binance.org:8545/'
 const VEC_TOKEN     = process.env.VEC_TOKEN_ADDRESS || '0x57Cd84ebe7cb619277760Bd26CdF18d75a14c37B'
 const TREASURY      = (process.env.TREASURY_ADDRESS || '').toLowerCase()
@@ -13,8 +18,10 @@ const PLANS = {
   Agency: { vecAmount: 400, label: 'Agency',  days: 30 },
 }
 
+// Processed tx hashes (prevents double processing)
 if (!global._processedTx) global._processedTx = new Set()
 
+// ── Simple JSON-RPC call to BNB RPC ──────────────────────────────────────────
 function rpcCall(method, params) {
   return new Promise(function(resolve, reject) {
     var body = JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
@@ -44,6 +51,7 @@ function rpcCall(method, params) {
   })
 }
 
+// ── Firebase Firestore REST update ────────────────────────────────────────────
 async function getFirebaseToken(serviceAccount) {
   var now      = Math.floor(Date.now() / 1000)
   var header   = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url')
@@ -114,7 +122,9 @@ async function firestorePatch(projectId, docPath, fields, token) {
   })
 }
 
+// ── Main handler ──────────────────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
+  // Always JSON — no HTML errors
   res.setHeader('Content-Type', 'application/json')
   res.setHeader('Access-Control-Allow-Origin',  '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
@@ -122,6 +132,7 @@ module.exports = async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end()
 
+  // GET — return plan info + config check
   if (req.method === 'GET') {
     return res.status(200).json({
       success:       true,
@@ -140,6 +151,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Method not allowed' })
   }
 
+  // ── Validate env ────────────────────────────────────────────────────────────
   if (!TREASURY) {
     return res.status(500).json({
       success: false,
@@ -147,6 +159,7 @@ module.exports = async function handler(req, res) {
     })
   }
 
+  // ── Parse body ──────────────────────────────────────────────────────────────
   var body          = req.body || {}
   var txHash        = body.txHash        || ''
   var userId        = body.userId        || ''
@@ -166,9 +179,11 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ success: false, error: 'This transaction has already been processed.' })
   }
 
+  // ── Verify transaction on-chain ─────────────────────────────────────────────
   try {
     console.log('[vec-subscribe] Verifying tx:', txHash, 'plan:', planId, 'user:', userId)
 
+    // Get transaction receipt
     var receipt = await rpcCall('eth_getTransactionReceipt', [txHash])
     if (!receipt) {
       return res.status(400).json({
@@ -181,6 +196,7 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ success: false, error: 'Transaction failed on-chain.' })
     }
 
+    // Find VEC Transfer log to treasury
     var logs        = receipt.logs || []
     var transferLog = null
 
@@ -204,6 +220,7 @@ module.exports = async function handler(req, res) {
       })
     }
 
+    // Verify sender matches
     var fromAddr = ('0x' + transferLog.topics[1].slice(26)).toLowerCase()
     if (fromAddr !== walletAddress) {
       return res.status(400).json({
@@ -212,6 +229,7 @@ module.exports = async function handler(req, res) {
       })
     }
 
+    // Verify amount (convert hex to decimal, 18 decimals)
     var rawAmount     = BigInt(transferLog.data)
     var divisor       = BigInt('1000000000000000000')
     var wholePart     = rawAmount / divisor
@@ -226,6 +244,7 @@ module.exports = async function handler(req, res) {
       })
     }
 
+    // Mark as processed
     global._processedTx.add(txHash)
     if (global._processedTx.size > 10000) {
       var arr = Array.from(global._processedTx)
@@ -235,6 +254,7 @@ module.exports = async function handler(req, res) {
     var expiresAt = Date.now() + (plan.days * 24 * 60 * 60 * 1000)
     console.log('[vec-subscribe] Payment verified! User:', userId, 'Plan:', planId, 'VEC:', transferredVEC)
 
+    // ── Update Firebase ───────────────────────────────────────────────────────
     var firebaseUpdated = false
 
     if (FIREBASE_KEY) {
@@ -243,6 +263,7 @@ module.exports = async function handler(req, res) {
         var token          = await getFirebaseToken(serviceAccount)
         var projectId      = serviceAccount.project_id
 
+        // Update user tier
         await firestorePatch(projectId, 'users/' + userId, {
           tier:               { stringValue: planId },
           subscriptionTier:   { stringValue: planId },
@@ -252,6 +273,7 @@ module.exports = async function handler(req, res) {
           updatedAt:          { integerValue: String(Date.now()) },
         }, token)
 
+        // Save payment record
         var paymentId = 'vec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
         await firestorePatch(projectId, 'vec_payments/' + paymentId, {
           userId:        { stringValue: userId },
@@ -269,6 +291,7 @@ module.exports = async function handler(req, res) {
 
       } catch(fbErr) {
         console.error('[vec-subscribe] Firebase error (non-fatal):', fbErr.message)
+        // Payment was valid — still return success but warn
         return res.status(200).json({
           success:        true,
           tier:           planId,
