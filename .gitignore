@@ -20,6 +20,8 @@ firebase-debug.log
 firebase-debug.*.log
 firestore-debug.log
 ui-debug.log
+geminiService.ts
+firebaseService.ts
 
 # ─── Node ────────────────────────────────────────────────────────────────────
 node_modules/
