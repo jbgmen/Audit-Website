@@ -1,16 +1,13 @@
-// api/vec-subscribe.js
-// Vercel Serverless Function — VEC payment verifier + Firebase tier upgrader
-// Always returns JSON — never crashes silently
+// api/vec-subscribe.js — ES Module version (Vite project compatible)
+import https from 'https'
+import http from 'http'
+import crypto from 'crypto'
 
-const https = require('https')
-const http  = require('http')
-
-// ── Config ────────────────────────────────────────────────────────────────────
-const RPC_URL       = process.env.RPC_URL       || 'https://data-seed-prebsc-1-s1.binance.org:8545/'
-const VEC_TOKEN     = process.env.VEC_TOKEN_ADDRESS || '0x57Cd84ebe7cb619277760Bd26CdF18d75a14c37B'
-const TREASURY      = (process.env.TREASURY_ADDRESS || '').toLowerCase()
-const FIREBASE_KEY  = process.env.FIREBASE_SERVICE_KEY || ''
-const TRANSFER_TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+const RPC_URL      = process.env.RPC_URL || 'https://data-seed-prebsc-1-s1.binance.org:8545/'
+const VEC_TOKEN    = process.env.VEC_TOKEN_ADDRESS || '0x57Cd84ebe7cb619277760Bd26CdF18d75a14c37B'
+const TREASURY     = (process.env.TREASURY_ADDRESS || '').toLowerCase()
+const FIREBASE_KEY = process.env.FIREBASE_SERVICE_KEY || ''
+const TRANSFER_SIG = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 
 const PLANS = {
   Basic:  { vecAmount: 50,  label: 'Basic',  days: 30 },
@@ -18,31 +15,29 @@ const PLANS = {
   Agency: { vecAmount: 400, label: 'Agency',  days: 30 },
 }
 
-// Processed tx hashes (prevents double processing)
 if (!global._processedTx) global._processedTx = new Set()
 
-// ── Simple JSON-RPC call to BNB RPC ──────────────────────────────────────────
+// ── JSON-RPC call ─────────────────────────────────────────────────────────────
 function rpcCall(method, params) {
-  return new Promise(function(resolve, reject) {
-    var body = JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
-    var url  = new URL(RPC_URL)
-    var lib  = url.protocol === 'https:' ? https : http
-
-    var req = lib.request({
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({ jsonrpc: '2.0', method, params, id: 1 })
+    const url  = new URL(RPC_URL)
+    const lib  = url.protocol === 'https:' ? https : http
+    const req  = lib.request({
       hostname: url.hostname,
       port:     url.port || (url.protocol === 'https:' ? 443 : 80),
-      path:     url.pathname + url.search,
+      path:     url.pathname,
       method:   'POST',
       headers:  { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-    }, function(res) {
-      var data = ''
-      res.on('data', function(c) { data += c })
-      res.on('end', function() {
+    }, (res) => {
+      let d = ''
+      res.on('data', c => d += c)
+      res.on('end', () => {
         try {
-          var parsed = JSON.parse(data)
-          if (parsed.error) reject(new Error(parsed.error.message || 'RPC error'))
-          else resolve(parsed.result)
-        } catch(e) { reject(new Error('RPC response parse error')) }
+          const p = JSON.parse(d)
+          if (p.error) reject(new Error(p.error.message))
+          else resolve(p.result)
+        } catch(e) { reject(new Error('RPC parse error')) }
       })
     })
     req.on('error', reject)
@@ -51,70 +46,56 @@ function rpcCall(method, params) {
   })
 }
 
-// ── Firebase Firestore REST update ────────────────────────────────────────────
-async function getFirebaseToken(serviceAccount) {
-  var now      = Math.floor(Date.now() / 1000)
-  var header   = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url')
-  var claims   = Buffer.from(JSON.stringify({
-    iss: serviceAccount.client_email,
-    sub: serviceAccount.client_email,
+// ── Firebase token ────────────────────────────────────────────────────────────
+async function getFirebaseToken(sa) {
+  const now    = Math.floor(Date.now() / 1000)
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url')
+  const claims = Buffer.from(JSON.stringify({
+    iss: sa.client_email, sub: sa.client_email,
     aud: 'https://oauth2.googleapis.com/token',
-    iat: now,
-    exp: now + 3600,
+    iat: now, exp: now + 3600,
     scope: 'https://www.googleapis.com/auth/datastore',
   })).toString('base64url')
-
-  var crypto = require('crypto')
-  var sign   = crypto.createSign('RSA-SHA256')
+  const sign = crypto.createSign('RSA-SHA256')
   sign.update(header + '.' + claims)
-  var sig = sign.sign(serviceAccount.private_key).toString('base64url')
-  var jwt = header + '.' + claims + '.' + sig
+  const jwt  = header + '.' + claims + '.' + sign.sign(sa.private_key).toString('base64url')
+  const body = 'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=' + jwt
 
-  var tokenBody = 'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=' + jwt
-
-  return new Promise(function(resolve, reject) {
-    var req = https.request({
-      hostname: 'oauth2.googleapis.com',
-      path:     '/token',
-      method:   'POST',
-      headers:  { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(tokenBody) }
-    }, function(res) {
-      var d = ''
-      res.on('data', function(c) { d += c })
-      res.on('end', function() {
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
+    }, (res) => {
+      let d = ''
+      res.on('data', c => d += c)
+      res.on('end', () => {
         try {
-          var parsed = JSON.parse(d)
-          if (parsed.access_token) resolve(parsed.access_token)
-          else reject(new Error('No access token: ' + d.slice(0, 200)))
+          const p = JSON.parse(d)
+          if (p.access_token) resolve(p.access_token)
+          else reject(new Error('No token: ' + d.slice(0, 200)))
         } catch(e) { reject(new Error('Token parse error')) }
       })
     })
     req.on('error', reject)
-    req.write(tokenBody)
+    req.write(body)
     req.end()
   })
 }
 
+// ── Firestore PATCH ───────────────────────────────────────────────────────────
 async function firestorePatch(projectId, docPath, fields, token) {
-  var body = JSON.stringify({ fields })
-  var keys = Object.keys(fields)
-  var mask = keys.map(function(k){ return 'updateMask.fieldPaths=' + k }).join('&')
-  var path = '/v1/projects/' + projectId + '/databases/(default)/documents/' + docPath + '?' + mask
+  const body = JSON.stringify({ fields })
+  const mask = Object.keys(fields).map(k => 'updateMask.fieldPaths=' + k).join('&')
+  const path = '/v1/projects/' + projectId + '/databases/(default)/documents/' + docPath + '?' + mask
 
-  return new Promise(function(resolve, reject) {
-    var req = https.request({
-      hostname: 'firestore.googleapis.com',
-      path,
-      method:   'PATCH',
-      headers: {
-        'Content-Type':   'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        'Authorization':  'Bearer ' + token,
-      }
-    }, function(res) {
-      var d = ''
-      res.on('data', function(c){ d += c })
-      res.on('end', function(){ resolve({ status: res.statusCode, body: d }) })
+  return new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'firestore.googleapis.com', path, method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'Authorization': 'Bearer ' + token }
+    }, (res) => {
+      let d = ''
+      res.on('data', c => d += c)
+      res.on('end', () => resolve({ status: res.statusCode, body: d }))
     })
     req.on('error', reject)
     req.write(body)
@@ -123,147 +104,76 @@ async function firestorePatch(projectId, docPath, fields, token) {
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
-module.exports = async function handler(req, res) {
-  // Always JSON — no HTML errors
+export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
-  res.setHeader('Access-Control-Allow-Origin',  '*')
+  res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
-
   if (req.method === 'OPTIONS') return res.status(200).end()
 
-  // GET — return plan info + config check
   if (req.method === 'GET') {
     return res.status(200).json({
-      success:       true,
-      plans:         PLANS,
-      vecToken:      VEC_TOKEN,
-      treasury:      TREASURY,
-      configured: {
-        treasury:     !!TREASURY,
-        firebase:     !!FIREBASE_KEY,
-        rpc:          !!RPC_URL,
-      }
+      success: true, plans: PLANS, vecToken: VEC_TOKEN, treasury: TREASURY,
+      configured: { treasury: !!TREASURY, firebase: !!FIREBASE_KEY, rpc: !!RPC_URL }
     })
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Method not allowed' })
-  }
+  if (req.method !== 'POST') return res.status(405).json({ success: false, error: 'Method not allowed' })
 
-  // ── Validate env ────────────────────────────────────────────────────────────
-  if (!TREASURY) {
-    return res.status(500).json({
-      success: false,
-      error:   'Server not configured: TREASURY_ADDRESS missing. Add it in Vercel → Settings → Environment Variables.'
-    })
-  }
+  if (!TREASURY) return res.status(500).json({ success: false, error: 'TREASURY_ADDRESS not set in Vercel environment variables.' })
 
-  // ── Parse body ──────────────────────────────────────────────────────────────
-  var body          = req.body || {}
-  var txHash        = body.txHash        || ''
-  var userId        = body.userId        || ''
-  var planId        = body.planId        || ''
-  var walletAddress = (body.walletAddress || '').toLowerCase()
+  const { txHash, userId, planId, walletAddress: rawWallet } = req.body || {}
+  const walletAddress = (rawWallet || '').toLowerCase()
 
-  if (!txHash || !userId || !planId || !walletAddress) {
+  if (!txHash || !userId || !planId || !walletAddress)
     return res.status(400).json({ success: false, error: 'Missing: txHash, userId, planId, walletAddress' })
-  }
 
-  var plan = PLANS[planId]
-  if (!plan) {
-    return res.status(400).json({ success: false, error: 'Invalid plan: ' + planId })
-  }
+  const plan = PLANS[planId]
+  if (!plan) return res.status(400).json({ success: false, error: 'Invalid plan: ' + planId })
 
-  if (global._processedTx.has(txHash)) {
-    return res.status(400).json({ success: false, error: 'This transaction has already been processed.' })
-  }
+  if (global._processedTx.has(txHash))
+    return res.status(400).json({ success: false, error: 'Transaction already processed.' })
 
-  // ── Verify transaction on-chain ─────────────────────────────────────────────
   try {
-    console.log('[vec-subscribe] Verifying tx:', txHash, 'plan:', planId, 'user:', userId)
+    console.log('[vec-subscribe] Verifying tx:', txHash, 'plan:', planId)
 
-    // Get transaction receipt
-    var receipt = await rpcCall('eth_getTransactionReceipt', [txHash])
-    if (!receipt) {
-      return res.status(400).json({
-        success: false,
-        error:   'Transaction not found. Please wait for confirmation and try again.'
-      })
-    }
+    const receipt = await rpcCall('eth_getTransactionReceipt', [txHash])
+    if (!receipt) return res.status(400).json({ success: false, error: 'Transaction not confirmed yet. Please wait and try again.' })
+    if (receipt.status !== '0x1') return res.status(400).json({ success: false, error: 'Transaction failed on-chain.' })
 
-    if (receipt.status !== '0x1') {
-      return res.status(400).json({ success: false, error: 'Transaction failed on-chain.' })
-    }
+    // Find Transfer log to treasury
+    const logs       = receipt.logs || []
+    const transferLog = logs.find(log =>
+      log.address.toLowerCase() === VEC_TOKEN.toLowerCase() &&
+      log.topics?.[0] === TRANSFER_SIG &&
+      ('0x' + log.topics[2].slice(26)).toLowerCase() === TREASURY
+    )
 
-    // Find VEC Transfer log to treasury
-    var logs        = receipt.logs || []
-    var transferLog = null
+    if (!transferLog) return res.status(400).json({ success: false, error: 'No VEC transfer to treasury found. Did you send to the correct address?' })
 
-    for (var i = 0; i < logs.length; i++) {
-      var log = logs[i]
-      if (
-        log.address.toLowerCase() === VEC_TOKEN.toLowerCase() &&
-        log.topics && log.topics[0] === TRANSFER_TOPIC &&
-        log.topics[2] &&
-        ('0x' + log.topics[2].slice(26)).toLowerCase() === TREASURY
-      ) {
-        transferLog = log
-        break
-      }
-    }
+    const fromAddr = ('0x' + transferLog.topics[1].slice(26)).toLowerCase()
+    if (fromAddr !== walletAddress) return res.status(400).json({ success: false, error: 'Sender address mismatch.' })
 
-    if (!transferLog) {
-      return res.status(400).json({
-        success: false,
-        error:   'No VEC transfer to treasury found in this transaction. Make sure you sent VEC to the correct address.'
-      })
-    }
+    const rawAmt   = BigInt(transferLog.data)
+    const divisor  = BigInt('1000000000000000000')
+    const vecSent  = parseFloat((rawAmt * 10000n / divisor).toString()) / 10000
 
-    // Verify sender matches
-    var fromAddr = ('0x' + transferLog.topics[1].slice(26)).toLowerCase()
-    if (fromAddr !== walletAddress) {
-      return res.status(400).json({
-        success: false,
-        error:   'Transaction sender does not match your wallet address.'
-      })
-    }
+    if (vecSent < plan.vecAmount * 0.99)
+      return res.status(400).json({ success: false, error: `Insufficient VEC. Required: ${plan.vecAmount}, Received: ${vecSent.toFixed(2)}` })
 
-    // Verify amount (convert hex to decimal, 18 decimals)
-    var rawAmount     = BigInt(transferLog.data)
-    var divisor       = BigInt('1000000000000000000')
-    var wholePart     = rawAmount / divisor
-    var fracPart      = rawAmount % divisor
-    var transferredVEC = parseFloat(wholePart.toString() + '.' + fracPart.toString().padStart(18, '0').slice(0, 4))
-    var requiredVEC   = plan.vecAmount
-
-    if (transferredVEC < requiredVEC * 0.99) {
-      return res.status(400).json({
-        success: false,
-        error:   'Insufficient VEC. Required: ' + requiredVEC + ' VEC, Received: ' + transferredVEC.toFixed(2) + ' VEC.'
-      })
-    }
-
-    // Mark as processed
     global._processedTx.add(txHash)
-    if (global._processedTx.size > 10000) {
-      var arr = Array.from(global._processedTx)
-      global._processedTx = new Set(arr.slice(-5000))
-    }
 
-    var expiresAt = Date.now() + (plan.days * 24 * 60 * 60 * 1000)
-    console.log('[vec-subscribe] Payment verified! User:', userId, 'Plan:', planId, 'VEC:', transferredVEC)
+    const expiresAt = Date.now() + plan.days * 86400000
+    console.log('[vec-subscribe] Verified! VEC:', vecSent, 'Plan:', planId)
 
-    // ── Update Firebase ───────────────────────────────────────────────────────
-    var firebaseUpdated = false
-
+    // Update Firebase
+    let firebaseUpdated = false
     if (FIREBASE_KEY) {
       try {
-        var serviceAccount = JSON.parse(FIREBASE_KEY)
-        var token          = await getFirebaseToken(serviceAccount)
-        var projectId      = serviceAccount.project_id
+        const sa        = JSON.parse(FIREBASE_KEY)
+        const token     = await getFirebaseToken(sa)
+        const projectId = sa.project_id
 
-        // Update user tier
         await firestorePatch(projectId, 'users/' + userId, {
           tier:               { stringValue: planId },
           subscriptionTier:   { stringValue: planId },
@@ -273,13 +183,12 @@ module.exports = async function handler(req, res) {
           updatedAt:          { integerValue: String(Date.now()) },
         }, token)
 
-        // Save payment record
-        var paymentId = 'vec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
-        await firestorePatch(projectId, 'vec_payments/' + paymentId, {
+        const payId = 'vec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
+        await firestorePatch(projectId, 'vec_payments/' + payId, {
           userId:        { stringValue: userId },
           planId:        { stringValue: planId },
           txHash:        { stringValue: txHash },
-          vecAmount:     { doubleValue: transferredVEC },
+          vecAmount:     { doubleValue: vecSent },
           walletAddress: { stringValue: walletAddress },
           status:        { stringValue: 'confirmed' },
           createdAt:     { integerValue: String(Date.now()) },
@@ -288,38 +197,24 @@ module.exports = async function handler(req, res) {
 
         firebaseUpdated = true
         console.log('[vec-subscribe] Firebase updated for user:', userId)
-
       } catch(fbErr) {
-        console.error('[vec-subscribe] Firebase error (non-fatal):', fbErr.message)
-        // Payment was valid — still return success but warn
+        console.error('[vec-subscribe] Firebase error:', fbErr.message)
         return res.status(200).json({
-          success:        true,
-          tier:           planId,
-          expiresAt,
-          txHash,
-          vecPaid:        transferredVEC.toFixed(2),
-          firebaseUpdated: false,
-          warning:        'Payment confirmed on-chain but profile sync failed. Contact support with your tx hash.',
-          message:        planId + ' plan payment confirmed!'
+          success: true, tier: planId, expiresAt, txHash,
+          vecPaid: vecSent.toFixed(2), firebaseUpdated: false,
+          warning: 'Payment confirmed but profile sync failed. Contact support with tx: ' + txHash
         })
       }
     }
 
     return res.status(200).json({
-      success:        true,
-      tier:           planId,
-      expiresAt,
-      txHash,
-      vecPaid:        transferredVEC.toFixed(2),
-      firebaseUpdated,
-      message:        planId + ' plan activated successfully!'
+      success: true, tier: planId, expiresAt, txHash,
+      vecPaid: vecSent.toFixed(2), firebaseUpdated,
+      message: planId + ' plan activated!'
     })
 
   } catch(err) {
-    console.error('[vec-subscribe] Unhandled error:', err.message)
-    return res.status(500).json({
-      success: false,
-      error:   'Verification failed: ' + err.message
-    })
+    console.error('[vec-subscribe] Error:', err.message)
+    return res.status(500).json({ success: false, error: err.message })
   }
 }
