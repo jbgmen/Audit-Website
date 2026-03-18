@@ -1,5 +1,7 @@
 import React from 'react';
 import { View } from '../types';
+import HeroSection from '../components/HeroSection.tsx';
+
 
 interface Props {
   setView: (view: View) => void;
@@ -7,6 +9,8 @@ interface Props {
 
 const Landing: React.FC<Props> = ({ setView }) => {
   return (
+    <HeroSection setView={setView} />
+    
     <div className="min-h-screen relative overflow-hidden bg-forensicWhite">
       {/* Dynamic Background Elements */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden -z-10">
