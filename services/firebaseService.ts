@@ -21,13 +21,13 @@ import { AuditRecord, DomainLicense, CryptoPayment, User } from '../types';
 
 // ── Firebase config — fill in your values ────────────────────────────────────
 const firebaseConfig = {
-  apiKey: "AIzaSyBE4PKZCdmsoImSJpC5k65H0coanvIgI2M",
-  authDomain: "velacore-analytics.firebaseapp.com",
-  projectId: "velacore-analytics",
-  storageBucket: "velacore-analytics.firebasestorage.app",
-  messagingSenderId: "630517813658",
-  appId: "1:630517813658:web:4654c0323a0eb0a50d6a23",
-  measurementId: "G-5ZSV9ZEY67"
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
 // Initialize Firebase only once
