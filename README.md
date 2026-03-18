@@ -170,48 +170,6 @@ nano .env.local
 npm run dev
 ```
 
-### Environment Variables
-
-Create `.env.local` with these values:
-
-```env
-# Gemini AI
-VITE_GEMINI_API_KEY=your_gemini_api_key
-
-# Firebase (frontend)
-VITE_FIREBASE_API_KEY=your_firebase_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your_project_id
-VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
-VITE_FIREBASE_APP_ID=1:123456789:web:abc123
-VITE_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
-
-# VEC Payment (frontend)
-VITE_TREASURY_ADDRESS=0x_your_treasury_wallet_address
-
-# API (server-side — Vercel only, NOT in VITE_)
-VEC_TOKEN_ADDRESS=0x57Cd84ebe7cb619277760Bd26CdF18d75a14c37B
-TREASURY_ADDRESS=0x_your_treasury_wallet_address
-RPC_URL=https://data-seed-prebsc-1-s1.binance.org:8545/
-FIREBASE_SERVICE_KEY={"type":"service_account",...}
-```
-
----
-
-## Deployment (Vercel)
-
-1. Push code to GitHub
-2. Go to [vercel.com](https://vercel.com) → New Project → Import from GitHub
-3. Select `Audit-Website` repo
-4. Framework: **Vite**
-5. Add all environment variables from the list above
-6. Deploy
-
-> **Important:** Never put API keys in code. Always use environment variables.
-
----
-
 ## Smart Contracts
 
 | Contract | Address | Network |
