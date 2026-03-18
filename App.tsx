@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, AuditRecord, User } from './types.ts';
 import Landing from './views/Landing.tsx';
 import AuditFlow from './views/AuditFlow.tsx';
 import AuditReport from './components/AuditReport.tsx';
-import Pricing from './views/Pricing.tsx';
 import Documentation from './views/Documentation.tsx';
 import Standards from './views/Standards.tsx';
 import Vault from './views/Vault.tsx';
@@ -15,29 +14,28 @@ import Navbar from './components/Navbar.tsx';
 import Footer from './components/Footer.tsx';
 import CookieConsent from './components/CookieConsent.tsx';
 import VerificationPortal from './views/VerificationPortal.tsx';
-import { saveAuditToFirebase, auth, getUserAudits } from './services/firebaseService.ts';
+import VecPricing from './views/VecPricing.tsx';
+import { saveAuditToFirebase, auth, getUserAudits, watchUserTier } from './services/firebaseService.ts';
 import { onAuthStateChanged } from 'firebase/auth';
-import { initializePaddle } from './services/paddleService.ts';
 
 const App: React.FC = () => {
-  // --- HASH ROUTING LOGIC ---
+
+  // ── Hash routing ────────────────────────────────────────────────────────────
   const getInitialView = (): View => {
-    const hash = window.location.hash.replace('#/', '');
+    const hash         = window.location.hash.replace('#/', '');
     const searchParams = new URLSearchParams(window.location.search);
     if (searchParams.has('verify')) return 'verify';
-    
     const validViews: View[] = ['home', 'audit', 'report', 'pricing', 'docs', 'vault', 'branding', 'privacy', 'terms', 'auth', 'profile', 'standards', 'verify'];
     return validViews.includes(hash as View) ? (hash as View) : 'home';
   };
 
-  const [currentView, setCurrentView] = useState<View>(getInitialView());
-  const [records, setRecords] = useState<AuditRecord[]>([]);
-  const [activeRecord, setActiveRecord] = useState<AuditRecord | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [currentView,   setCurrentView]   = useState<View>(getInitialView());
+  const [records,       setRecords]        = useState<AuditRecord[]>([]);
+  const [activeRecord,  setActiveRecord]   = useState<AuditRecord | null>(null);
+  const [user,          setUser]           = useState<User | null>(null);
 
-  useEffect(() => {
-    initializePaddle();
-  }, []);
+  // Ref to hold the tier watcher unsubscribe function
+  const tierWatcherRef = useRef<(() => void) | null>(null);
 
   const navigateTo = useCallback((view: View) => {
     setCurrentView(view);
@@ -45,50 +43,71 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const handleHashChange = () => {
-      const view = getInitialView();
-      setCurrentView(view);
-    };
-
+    const handleHashChange = () => setCurrentView(getInitialView());
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
+  // Suppress noisy cross-origin script errors (MetaMask, Firebase etc.)
   useEffect(() => {
     const handleGlobalError = (event: ErrorEvent) => {
-      // "Script error." is a generic message when a cross-origin script fails.
-      // We log a more helpful message to the console.
       if (event.message === 'Script error.') {
-        console.warn("VelaCore: A cross-origin script error was detected. This usually happens when a third-party script (like MetaMask, Paddle, or Firebase) encounters an issue or is blocked by a browser extension.");
+        console.warn("VelaCore: Cross-origin script error detected (likely MetaMask/Firebase extension).");
       }
     };
     window.addEventListener('error', handleGlobalError);
     return () => window.removeEventListener('error', handleGlobalError);
   }, []);
 
+  // ── Auth listener + real-time tier watcher ──────────────────────────────────
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      try {
-        if (firebaseUser) {
-          setUser({
-            id: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            tier: 'Free',
-            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0].toUpperCase(),
-            avatar: firebaseUser.photoURL || undefined
-          });
-        } else {
-          setUser(null);
-          setRecords([]);
-          localStorage.removeItem('velacore_audits_v2');
-        }
-      } catch (err) {
-        console.error("VelaCore Auth Sync Error:", err);
+    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+      // Clean up previous tier watcher
+      if (tierWatcherRef.current) {
+        tierWatcherRef.current();
+        tierWatcherRef.current = null;
+      }
+
+      if (firebaseUser) {
+        // Set initial user state
+        setUser({
+          id:     firebaseUser.uid,
+          email:  firebaseUser.email || '',
+          tier:   'Free',
+          name:   firebaseUser.displayName || firebaseUser.email?.split('@')[0].toUpperCase(),
+          avatar: firebaseUser.photoURL || undefined,
+        });
+
+        // Watch Firestore for tier changes in real-time
+        // When vec-subscribe API confirms VEC payment → Firestore updates → this fires instantly
+        // User sees plan upgrade without any refresh or admin action
+        const unsubTier = watchUserTier(
+          firebaseUser.uid,
+          (tier, tierExpiresAt, vecWallet) => {
+            setUser(prev => prev ? {
+              ...prev,
+              tier,
+              tierExpiresAt,
+              vecWallet,
+            } as User : prev);
+          }
+        );
+        tierWatcherRef.current = unsubTier;
+
+      } else {
+        setUser(null);
+        setRecords([]);
+        localStorage.removeItem('velacore_audits_v2');
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubAuth();
+      if (tierWatcherRef.current) tierWatcherRef.current();
+    };
   }, []);
 
+  // ── Sync audits from Firebase ───────────────────────────────────────────────
   useEffect(() => {
     const syncCloudData = async () => {
       if (user?.id) {
@@ -124,11 +143,11 @@ const App: React.FC = () => {
     }
   }, [user, currentView]);
 
+  // ── Audit actions ───────────────────────────────────────────────────────────
   const handleAuditComplete = async (record: AuditRecord) => {
     const updatedRecords = [record, ...records];
     setRecords(updatedRecords);
     localStorage.setItem('velacore_audits_v2', JSON.stringify(updatedRecords));
-    
     if (user) {
       try {
         await saveAuditToFirebase(user.id, record);
@@ -136,7 +155,6 @@ const App: React.FC = () => {
         console.error("Failed to sync audit to cloud:", err);
       }
     }
-    
     setActiveRecord(record);
     navigateTo('report');
   };
@@ -145,65 +163,110 @@ const App: React.FC = () => {
     const updated = records.filter(r => r.id !== auditId);
     setRecords(updated);
     localStorage.setItem('velacore_audits_v2', JSON.stringify(updated));
-    if (activeRecord?.id === auditId) {
-      setActiveRecord(null);
-    }
+    if (activeRecord?.id === auditId) setActiveRecord(null);
   };
 
   const handleLogout = async () => {
     await auth.signOut();
     setUser(null);
-    setRecords([]); 
+    setRecords([]);
     localStorage.removeItem('velacore_audits_v2');
     navigateTo('home');
   };
 
-  const handleSelectAuditFromProfile = (record: AuditRecord) => {
-    setActiveRecord(record);
-    navigateTo('report');
-  };
+  // Called by VecPricing when payment succeeds — updates user state immediately
+  const handleRefreshUser = useCallback((updatedUser: User) => {
+    setUser(updatedUser);
+  }, []);
 
+  // ── Routing ─────────────────────────────────────────────────────────────────
   const renderView = () => {
     const searchParams = new URLSearchParams(window.location.search);
-    const verifyId = searchParams.get('verify');
+    const verifyId     = searchParams.get('verify');
 
     if (verifyId) {
       return <VerificationPortal auditId={verifyId} onBack={() => navigateTo('home')} />;
     }
 
     switch (currentView) {
-      case 'home': return <Landing setView={navigateTo} />;
-      case 'audit': return <AuditFlow onComplete={handleAuditComplete} onCancel={() => navigateTo('home')} />;
+      case 'home':
+        return <Landing setView={navigateTo} />;
+
+      case 'audit':
+        return <AuditFlow onComplete={handleAuditComplete} onCancel={() => navigateTo('home')} />;
+
       case 'report':
         return activeRecord ? (
-          <AuditReport 
-            data={activeRecord.data} 
-            user={user} 
-            onLoginRequired={() => navigateTo('auth')} 
+          <AuditReport
+            data={activeRecord.data}
+            user={user}
+            onLoginRequired={() => navigateTo('auth')}
             onUpgrade={() => navigateTo('pricing')}
-            onClose={() => navigateTo('home')} 
+            onClose={() => navigateTo('home')}
           />
         ) : <Landing setView={navigateTo} />;
-      case 'pricing': return <Pricing user={user} onBack={() => navigateTo('home')} onRefreshUser={() => {}} />;
-      case 'docs': return <Documentation onBack={() => navigateTo('home')} />;
-      case 'standards': return <Standards onBack={() => navigateTo('home')} />;
-      case 'vault': return <Vault records={records} onSelect={(r) => { setActiveRecord(r); navigateTo('report'); }} onBack={() => navigateTo('home')} />;
-      case 'branding': return <Branding onBack={() => navigateTo('home')} />;
-      case 'privacy': return <LegalView type="privacy" onBack={() => navigateTo('home')} />;
-      case 'terms': return <LegalView type="terms" onBack={() => navigateTo('home')} />;
-      case 'auth': return <Auth onAuthSuccess={(u) => { setUser(u); navigateTo('home'); }} onBack={() => navigateTo('home')} />;
-      case 'profile': 
+
+      // VEC-powered pricing — replaces Paddle
+      case 'pricing':
+        return (
+          <VecPricing
+            user={user}
+            onBack={() => navigateTo('home')}
+            onRefreshUser={handleRefreshUser}
+          />
+        );
+
+      case 'docs':
+        return <Documentation onBack={() => navigateTo('home')} />;
+
+      case 'standards':
+        return <Standards onBack={() => navigateTo('home')} />;
+
+      case 'vault':
+        return (
+          <Vault
+            records={records}
+            onSelect={(r) => { setActiveRecord(r); navigateTo('report'); }}
+            onBack={() => navigateTo('home')}
+          />
+        );
+
+      case 'branding':
+        return <Branding onBack={() => navigateTo('home')} />;
+
+      case 'privacy':
+        return <LegalView type="privacy" onBack={() => navigateTo('home')} />;
+
+      case 'terms':
+        return <LegalView type="terms" onBack={() => navigateTo('home')} />;
+
+      case 'auth':
+        return (
+          <Auth
+            onAuthSuccess={(u) => { setUser(u); navigateTo('home'); }}
+            onBack={() => navigateTo('home')}
+          />
+        );
+
+      case 'profile':
         return user ? (
-          <Profile 
-            user={user} 
-            onLogout={handleLogout} 
-            onBack={() => navigateTo('home')} 
-            setView={navigateTo} 
-            onSelectAudit={handleSelectAuditFromProfile}
+          <Profile
+            user={user}
+            onLogout={handleLogout}
+            onBack={() => navigateTo('home')}
+            setView={navigateTo}
+            onSelectAudit={(r) => { setActiveRecord(r); navigateTo('report'); }}
             onDeleteAudit={handleRemoveAudit}
           />
-        ) : <Auth onAuthSuccess={(u) => { setUser(u); navigateTo('home'); }} onBack={() => navigateTo('home')} />;
-      default: return <Landing setView={navigateTo} />;
+        ) : (
+          <Auth
+            onAuthSuccess={(u) => { setUser(u); navigateTo('home'); }}
+            onBack={() => navigateTo('home')}
+          />
+        );
+
+      default:
+        return <Landing setView={navigateTo} />;
     }
   };
 
