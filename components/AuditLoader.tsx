@@ -1,202 +1,238 @@
-import React, { useState, useEffect } from 'react';
-import Logo from './Logo';
+import React, { useEffect, useState } from 'react';
 
-const MESSAGES = [
-  "INITIALIZING FORENSIC PROTOCOL...",
-  "ESTABLISHING SECURE GATEWAY...",
-  "SCANNING ARCHITECTURAL SURFACE...",
-  "DEEP LOGIC VALIDATION IN PROGRESS...",
-  "ANALYZING CONVERSION FRICTION...",
-  "GENERATING AUTHENTICITY HASH...",
-  "SEALING OFFICIAL CERTIFICATE..."
+interface Props {
+  message?: string;
+}
+
+const SCAN_STEPS = [
+  'Initializing forensic protocol...',
+  'Crawling architecture layers...',
+  'Analyzing conversion signals...',
+  'Cross-referencing industry data...',
+  'Generating intelligence report...',
 ];
 
-const AuditLoader: React.FC = () => {
-  const [index, setIndex] = useState(0);
+export default function Loader({ message }: Props) {
+  const [step,     setStep]     = useState(0);
   const [progress, setProgress] = useState(0);
+  const [dots,     setDots]     = useState('');
 
   useEffect(() => {
-    const messageTimer = setInterval(() => {
-      setIndex((prev) => (prev < MESSAGES.length - 1 ? prev + 1 : prev));
-    }, 2800);
+    const stepInterval = setInterval(() => {
+      setStep(s => (s + 1) % SCAN_STEPS.length);
+    }, 1400);
+    return () => clearInterval(stepInterval);
+  }, []);
 
-    const progressTimer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) return 100;
-        const increment = prev < 80 ? 0.8 : 0.2;
-        return Math.min(prev + increment, 100);
+  useEffect(() => {
+    const prog = setInterval(() => {
+      setProgress(p => {
+        if (p >= 94) return 94; // never reach 100 until actual done
+        return p + Math.random() * 3;
       });
-    }, 50);
+    }, 200);
+    return () => clearInterval(prog);
+  }, []);
 
-    return () => {
-      clearInterval(messageTimer);
-      clearInterval(progressTimer);
-    };
+  useEffect(() => {
+    const dot = setInterval(() => {
+      setDots(d => d.length >= 3 ? '' : d + '.');
+    }, 400);
+    return () => clearInterval(dot);
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-[#020617] flex flex-col items-center justify-center overflow-hidden p-4">
-      {/* Cinematic Background Layer */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* Animated Grid */}
-        <div 
-          className="absolute inset-0 opacity-[0.1]" 
-          style={{ 
-            backgroundImage: `linear-gradient(#D4AF37 1px, transparent 1px), linear-gradient(90deg, #D4AF37 1px, transparent 1px)`,
-            backgroundSize: 'clamp(32px, 8vw, 64px) clamp(32px, 8vw, 64px)',
-            maskImage: 'radial-gradient(circle at center, black 30%, transparent 80%)'
-          }}
-        />
-        
-        {/* Floating Light Orbs */}
-        <div className="absolute top-1/4 left-1/4 w-[60vw] h-[60vw] md:w-[40vw] md:h-[40vw] bg-accent/5 blur-[100px] md:blur-[150px] rounded-full animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-[50vw] h-[50vw] md:w-[35vw] md:h-[35vw] bg-blue-500/5 blur-[100px] md:blur-[150px] rounded-full animate-pulse [animation-delay:2s]" />
-
-        {/* Vertical Data Stream Lines */}
-        <div className="absolute inset-0 flex justify-around opacity-[0.03] md:opacity-[0.05]">
-          {[...Array(6)].map((_, i) => (
-            <div 
-              key={i} 
-              className="w-[1px] h-full bg-gradient-to-b from-transparent via-accent to-transparent animate-[scroll_4s_linear_infinite]"
-              style={{ animationDelay: `${i * 0.6}s` }}
-            />
-          ))}
-        </div>
-      </div>
-
+    <>
       <style>{`
-        @keyframes scan {
-          0% { transform: translateY(-100%); opacity: 0; }
-          50% { opacity: 0.8; }
-          100% { transform: translateY(100%); opacity: 0; }
+        .ld-root {
+          position: fixed; inset: 0; z-index: 9000;
+          background: #fafaf8;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          gap: 0;
         }
-        @keyframes scroll {
-          0% { transform: translateY(-100%); }
-          100% { transform: translateY(100%); }
+
+        /* Subtle grid */
+        .ld-grid {
+          position: absolute; inset: 0; pointer-events: none;
+          background-image:
+            linear-gradient(rgba(15,23,42,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(15,23,42,0.03) 1px, transparent 1px);
+          background-size: 48px 48px;
         }
-        @keyframes orbit {
-          from { transform: rotate(0deg) translateX(clamp(80px, 25vw, 120px)) rotate(0deg); }
-          to { transform: rotate(360deg) translateX(clamp(80px, 25vw, 120px)) rotate(-360deg); }
+
+        /* Corner decorations */
+        .ld-corner {
+          position: absolute; width: 40px; height: 40px;
+          opacity: 0.4;
         }
-        .text-glow {
-          text-shadow: 0 0 15px rgba(212, 175, 55, 0.4);
+        .ld-corner-tl { top: 40px; left: 40px; border-top: 2px solid #0f172a; border-left: 2px solid #0f172a; border-radius: 2px 0 0 0; }
+        .ld-corner-tr { top: 40px; right: 40px; border-top: 2px solid #0f172a; border-right: 2px solid #0f172a; border-radius: 0 2px 0 0; }
+        .ld-corner-bl { bottom: 40px; left: 40px; border-bottom: 2px solid #0f172a; border-left: 2px solid #0f172a; border-radius: 0 0 0 2px; }
+        .ld-corner-br { bottom: 40px; right: 40px; border-bottom: 2px solid #0f172a; border-right: 2px solid #0f172a; border-radius: 0 0 2px 0; }
+
+        /* Scanning line */
+        .ld-scan-line {
+          position: absolute; left: 0; right: 0; height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(212,160,23,0.6), transparent);
+          animation: ldScan 3s ease-in-out infinite;
         }
+        @keyframes ldScan {
+          0%   { top: 20%; opacity: 0; }
+          10%  { opacity: 1; }
+          90%  { opacity: 1; }
+          100% { top: 80%; opacity: 0; }
+        }
+
+        .ld-content {
+          position: relative; z-index: 1;
+          display: flex; flex-direction: column; align-items: center;
+          gap: 0; text-align: center; width: 100%; max-width: 440px; padding: 0 24px;
+        }
+
+        /* Case ID */
+        .ld-case {
+          font-size: 9px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase;
+          color: #94a3b8; margin-bottom: 32px;
+          display: flex; align-items: center; gap: 8px;
+        }
+        .ld-case-dot { width: 5px; height: 5px; border-radius: 50%; background: #22c55e; animation: ldPulse 1.5s infinite; }
+        @keyframes ldPulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+        /* Main shield icon */
+        .ld-icon {
+          width: 80px; height: 80px; margin-bottom: 28px; position: relative;
+        }
+        .ld-icon-ring {
+          position: absolute; inset: 0;
+          border: 2px solid transparent;
+          border-top-color: #d4a017;
+          border-right-color: rgba(212,160,23,0.3);
+          border-radius: 50%;
+          animation: ldSpin 1.2s linear infinite;
+        }
+        .ld-icon-ring-2 {
+          position: absolute; inset: 8px;
+          border: 1.5px solid transparent;
+          border-bottom-color: #0f172a;
+          border-left-color: rgba(15,23,42,0.2);
+          border-radius: 50%;
+          animation: ldSpin 2s linear infinite reverse;
+        }
+        @keyframes ldSpin { to { transform: rotate(360deg); } }
+        .ld-icon-center {
+          position: absolute; inset: 0;
+          display: flex; align-items: center; justify-content: center;
+        }
+
+        /* Headline */
+        .ld-title {
+          font-family: Georgia, 'Times New Roman', serif;
+          font-size: 22px; font-weight: 700; color: #0f172a;
+          letter-spacing: -0.3px; line-height: 1.2; margin-bottom: 8px;
+        }
+
+        /* Step message */
+        .ld-step {
+          font-size: 12px; color: #64748b; font-weight: 500;
+          height: 18px; margin-bottom: 32px;
+          transition: opacity 0.3s;
+        }
+
+        /* Progress bar */
+        .ld-progress-wrap {
+          width: 100%; height: 2px; background: rgba(15,23,42,0.08);
+          border-radius: 999px; overflow: hidden; margin-bottom: 14px;
+        }
+        .ld-progress-fill {
+          height: 100%; border-radius: 999px;
+          background: linear-gradient(90deg, #0f172a, #d4a017);
+          transition: width 0.4s cubic-bezier(0.4,0,0.2,1);
+          box-shadow: 0 0 8px rgba(212,160,23,0.5);
+        }
+
+        /* Progress label */
+        .ld-progress-label {
+          display: flex; justify-content: space-between; align-items: center;
+          width: 100%;
+        }
+        .ld-progress-pct {
+          font-size: 10px; font-weight: 900; color: #0f172a;
+          font-family: monospace; letter-spacing: 0.05em;
+        }
+        .ld-progress-status {
+          font-size: 9px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase;
+          color: #94a3b8;
+        }
+
+        /* Dots row */
+        .ld-dots-row {
+          display: flex; align-items: center; gap: 6px; margin-top: 28px;
+        }
+        .ld-dot {
+          width: 4px; height: 4px; border-radius: 50%; background: #e2e8f0;
+          transition: all 0.2s;
+        }
+        .ld-dot.active { background: #d4a017; transform: scale(1.4); }
       `}</style>
 
-      {/* Central Core Element */}
-      <div className="relative z-10 flex flex-col items-center w-full max-w-lg mx-auto">
-        {/* The "Scanner" Container */}
-        <div className="relative w-56 h-56 sm:w-64 sm:h-64 md:w-80 md:h-80 flex items-center justify-center">
-          
-          {/* Rotating Outer Rings */}
-          <div className="absolute inset-0 border border-accent/20 rounded-full animate-[spin_8s_linear_infinite]" />
-          <div className="absolute inset-[10%] border border-accent/10 rounded-full animate-[spin_12s_linear_infinite_reverse]" />
-          <div className="absolute inset-[20%] border-2 border-dashed border-accent/30 rounded-full animate-[spin_20s_linear_infinite]" />
-          
-          {/* Circular Progress Path */}
-          <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
-            <circle
-              cx="50"
-              cy="50"
-              r="48"
-              fill="none"
-              stroke="rgba(212, 175, 55, 0.05)"
-              strokeWidth="1"
-            />
-            <circle
-              cx="50"
-              cy="50"
-              r="48"
-              fill="none"
-              stroke="#D4AF37"
-              strokeWidth="2"
-              strokeDasharray="301.59"
-              strokeDashoffset={301.59 - (301.59 * progress) / 100}
-              strokeLinecap="round"
-              className="transition-all duration-300 ease-out"
-              style={{ filter: 'drop-shadow(0 0 8px #D4AF37)' }}
-            />
-          </svg>
+      <div className="ld-root">
+        <div className="ld-grid"/>
+        <div className="ld-scan-line"/>
 
-          {/* Orbiting Data Points */}
-          <div className="absolute w-1.5 h-1.5 md:w-2 md:h-2 bg-accent rounded-full animate-[orbit_4s_linear_infinite] shadow-[0_0_10px_#D4AF37]" />
-          <div className="absolute w-1 h-1 md:w-1.5 md:h-1.5 bg-blue-400 rounded-full animate-[orbit_6s_linear_infinite_reverse] shadow-[0_0_10px_#60A5FA] [animation-delay:1s]" />
+        {/* Corners */}
+        <div className="ld-corner ld-corner-tl"/>
+        <div className="ld-corner ld-corner-tr"/>
+        <div className="ld-corner ld-corner-bl"/>
+        <div className="ld-corner ld-corner-br"/>
 
-          {/* Logo Housing - Scaled per screen size */}
-          <div className="relative bg-[#020617] rounded-[1.5rem] sm:rounded-[2.5rem] p-6 sm:p-8 md:p-10 shadow-[0_0_60px_rgba(212,175,55,0.15)] border border-white/5 group overflow-hidden">
-            <div className="relative overflow-hidden rounded-xl sm:rounded-2xl">
-              <Logo 
-                type="square" 
-                inverse={true} 
-                className="h-16 sm:h-24 md:h-32 transform transition-transform group-hover:scale-110 duration-700" 
-              />
-              {/* Laser Scan Line Overlay */}
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-accent/40 to-transparent h-8 sm:h-12 w-full animate-[scan_2s_ease-in-out_infinite] pointer-events-none" />
-            </div>
+        <div className="ld-content">
+          {/* Case ID */}
+          <div className="ld-case">
+            <div className="ld-case-dot"/>
+            <span>FORENSIC SCAN IN PROGRESS</span>
           </div>
-        </div>
 
-        {/* Progress & Message Housing */}
-        <div className="mt-8 sm:mt-12 md:mt-16 space-y-4 sm:space-y-6 md:space-y-8 text-center px-4 w-full">
-          <div className="space-y-2 sm:space-y-3">
-            <h2 className="text-forensicWhite font-heading text-3xl sm:text-4xl md:text-5xl font-black uppercase tracking-tighter text-glow">
-              Execution <span className="text-accent italic">Unit</span>
-            </h2>
-            <div className="flex items-center justify-center gap-2 sm:gap-4">
-               <div className="h-[1px] w-4 sm:w-8 bg-accent/30" />
-               <p className="text-accent font-body font-black text-[9px] sm:text-[10px] md:text-sm tracking-[0.2em] sm:tracking-[0.4em] uppercase h-5 sm:h-6 overflow-hidden">
-                 {MESSAGES[index]}
-               </p>
-               <div className="h-[1px] w-4 sm:w-8 bg-accent/30" />
+          {/* Spinning rings + icon */}
+          <div className="ld-icon">
+            <div className="ld-icon-ring"/>
+            <div className="ld-icon-ring-2"/>
+            <div className="ld-icon-center">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0f172a" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <path d="M9 12l2 2 4-4" stroke="#d4a017" strokeWidth="2"/>
+              </svg>
             </div>
           </div>
 
-          {/* Numeric Display */}
-          <div className="flex flex-col items-center gap-1 sm:gap-2">
-            <div className="text-forensicWhite/20 font-heading font-black text-5xl sm:text-6xl md:text-8xl tabular-nums leading-none">
-              {Math.floor(progress)}<span className="text-xl sm:text-2xl md:text-3xl text-accent/40">%</span>
-            </div>
-            <div className="text-[8px] sm:text-[10px] font-black uppercase tracking-[0.4em] sm:tracking-[0.6em] text-slate-500">
-              Computational Integrity Check
-            </div>
+          {/* Title */}
+          <div className="ld-title">
+            {message || 'Analyzing Target'}
           </div>
 
-          {/* Decorative Security Bitstream */}
-          <div className="flex justify-center gap-0.5 sm:gap-1 opacity-20">
-            {[...Array(16)].map((_, i) => (
-              <div 
-                key={i} 
-                className={`w-0.5 sm:w-1 h-2 sm:h-3 rounded-full ${i < (progress / 6.25) ? 'bg-accent' : 'bg-white/10'}`} 
-              />
+          {/* Step text */}
+          <div className="ld-step">
+            {SCAN_STEPS[step]}{dots}
+          </div>
+
+          {/* Progress */}
+          <div className="ld-progress-wrap">
+            <div className="ld-progress-fill" style={{ width: `${progress}%` }}/>
+          </div>
+
+          <div className="ld-progress-label">
+            <span className="ld-progress-pct">{Math.floor(progress)}%</span>
+            <span className="ld-progress-status">Protocol v2.5 Active</span>
+          </div>
+
+          {/* Step indicators */}
+          <div className="ld-dots-row">
+            {SCAN_STEPS.map((_, i) => (
+              <div key={i} className={`ld-dot ${step === i ? 'active' : ''}`}/>
             ))}
           </div>
         </div>
       </div>
-
-      {/* Bottom Technical Overlay - Repositioned for Mobile */}
-      <div className="absolute bottom-6 sm:bottom-12 left-0 right-0 px-6 sm:px-12 flex flex-col md:flex-row justify-between items-center gap-4 sm:gap-6 opacity-30">
-        <div className="flex items-center gap-3 sm:gap-4 order-2 md:order-1">
-           <div className="w-8 h-8 sm:w-10 sm:h-10 border border-white/20 flex items-center justify-center font-mono text-[6px] sm:text-[8px] text-white">X-RAY</div>
-           <div className="text-left">
-             <div className="text-[6px] sm:text-[8px] font-black uppercase tracking-widest text-white">System Protocol</div>
-             <div className="text-[6px] sm:text-[8px] font-black uppercase tracking-widest text-accent">Forensic-Grade-2.5</div>
-           </div>
-        </div>
-        
-        <div className="text-[6px] sm:text-[8px] font-black uppercase tracking-[0.3em] sm:tracking-[0.5em] text-white text-center order-1 md:order-2 px-4">
-          DO NOT REFRESH — SECURE ARCHITECTURE SNAPSHOT IN PROGRESS
-        </div>
-
-        <div className="flex items-center gap-3 sm:gap-4 order-3">
-           <div className="text-right hidden sm:block">
-             <div className="text-[8px] font-black uppercase tracking-widest text-white">Registry Auth</div>
-             <div className="text-[8px] font-black uppercase tracking-widest text-accent">Verified_Active</div>
-           </div>
-           <div className="w-8 h-8 sm:w-10 sm:h-10 border border-white/20 flex items-center justify-center font-mono text-[6px] sm:text-[8px] text-white">AUTH</div>
-        </div>
-      </div>
-    </div>
+    </>
   );
-};
-
-export default AuditLoader;
+}
