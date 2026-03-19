@@ -112,19 +112,20 @@ export default function HeroSection({ setView }: HeroProps) {
           flex: 1; max-width: 620px;
         }
         .hero-badge {
-          display: inline-flex; align-items: center; gap: 8px;
-          padding: 6px 14px; border-radius: 4px;
-          background: #0f172a; color: #d4a017;
+          display: inline-flex; align-items: center; gap: 10px;
+          padding: 0 0 16px 0;
+          border-bottom: 1px solid rgba(212,160,23,0.2);
+          color: #94a3b8;
           font-size: 10px; font-weight: 800; letter-spacing: 0.15em;
           text-transform: uppercase;
-          margin-bottom: 32px;
+          margin-bottom: 28px;
           opacity: 0; transform: translateY(12px);
           transition: all 0.5s cubic-bezier(0.4,0,0.2,1);
         }
         .hero-badge.visible { opacity: 1; transform: none; }
         .hero-badge-dot {
-          width: 6px; height: 6px; border-radius: 50%; background: #22c55e;
-          animation: vcPulse 2s infinite;
+          width: 5px; height: 5px; border-radius: 50%; background: #22c55e;
+          animation: vcPulse 2s infinite; margin-left: 2px;
         }
 
         .hero-headline {
@@ -405,8 +406,11 @@ export default function HeroSection({ setView }: HeroProps) {
           <div className="hero-left">
 
             <div className={`hero-badge ${visible ? 'visible' : ''}`}>
+              <span style={{fontSize:9, letterSpacing:'0.18em'}}>CASE</span>
+              <span style={{fontFamily:'monospace', fontSize:11, color:'#d4a017', letterSpacing:'0.08em'}}>#772-B</span>
+              <span style={{width:1, height:12, background:'rgba(212,160,23,0.3)', display:'inline-block'}}/>
+              <span style={{fontSize:9, letterSpacing:'0.12em'}}>FORENSIC SCAN READY</span>
               <div className="hero-badge-dot" />
-              Proprietary Forensic Protocol v2.5
             </div>
 
             <h1 className={`hero-headline hero-headline-size ${visible ? 'visible' : ''}`}>
