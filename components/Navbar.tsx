@@ -8,14 +8,14 @@ interface Props {
   user?: User | null;
 }
 
-const TIER_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
+const NAVBAR_NAVBAR_TIER_CONFIG: Record<string, { color: string; bg: string; border: string }> = {
   Free:   { color: '#6b7280', bg: 'rgba(107,114,128,0.07)', border: 'rgba(107,114,128,0.18)' },
   Basic:  { color: '#2563eb', bg: 'rgba(37,99,235,0.07)',   border: 'rgba(37,99,235,0.18)'   },
   Pro:    { color: '#7c3aed', bg: 'rgba(124,58,237,0.07)',  border: 'rgba(124,58,237,0.18)'  },
   Agency: { color: '#b8860b', bg: 'rgba(184,134,11,0.08)',  border: 'rgba(184,134,11,0.22)'  },
 };
 
-const RESOURCE_LINKS = [
+const NAVBAR_NAVBAR_RESOURCE_LINKS = [
   { id: 'docs',      label: 'Framework & Docs',  desc: 'API reference & guides',         icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
   { id: 'standards', label: 'Forensic Standards', desc: 'Audit methodology & criteria',    icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' },
   { id: 'branding',  label: 'Identity Assets',    desc: 'Logos, brand & design tokens',   icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z' },
@@ -31,7 +31,7 @@ const Navbar: React.FC<Props> = ({ setView, activeView, user }) => {
   const dropRef = useRef<HTMLDivElement>(null);
 
   const tier      = user?.tier || 'Free';
-  const tierStyle = TIER_CONFIG[tier] || TIER_CONFIG.Free;
+  const tierStyle = NAVBAR_TIER_CONFIG[tier] || NAVBAR_TIER_CONFIG.Free;
 
   // Live clock for top bar
   useEffect(() => {
@@ -56,7 +56,7 @@ const Navbar: React.FC<Props> = ({ setView, activeView, user }) => {
   }, []);
 
   const go = (v: View) => { setView(v); setMenuOpen(false); setDropOpen(false); };
-  const isResActive = RESOURCE_LINKS.some(r => r.id === activeView);
+  const isResActive = NAVBAR_RESOURCE_LINKS.some(r => r.id === activeView);
 
   const NAV_LINKS = [
     { id: 'audit'   as View, label: 'Audit Engine', shortcut: '⌘A' },
@@ -433,7 +433,7 @@ const Navbar: React.FC<Props> = ({ setView, activeView, user }) => {
                 </button>
 
                 <div className={`nav-drop ${dropOpen ? 'open' : ''}`}>
-                  {RESOURCE_LINKS.map((r, i) => (
+                  {NAVBAR_RESOURCE_LINKS.map((r, i) => (
                     <React.Fragment key={r.id}>
                       {i === 2 && <div className="nav-drop-hr"/>}
                       <button className={`nav-drop-item ${activeView === r.id ? 'active' : ''}`} onClick={() => go(r.id as View)}>
@@ -506,7 +506,7 @@ const Navbar: React.FC<Props> = ({ setView, activeView, user }) => {
           ))}
 
           <div className="nav-drawer-section">Registry Intelligence</div>
-          {RESOURCE_LINKS.map(r => (
+          {NAVBAR_RESOURCE_LINKS.map(r => (
             <button key={r.id} className={`nav-drawer-link ${activeView === r.id ? 'active' : ''}`} onClick={() => go(r.id as View)}>
               <span style={{ display:'flex', alignItems:'center', gap:10 }}>
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity:0.4, flexShrink:0 }}>
