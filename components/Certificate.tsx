@@ -15,8 +15,8 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
   const ForensicStamp = () => {
     const c = '#927021';
     return (
-      <div className="relative w-40 h-40 select-none">
-        <svg viewBox="0 0 200 200" width="160" height="160" className="w-full h-full drop-shadow-xl" xmlns="http://www.w3.org/2000/svg">
+      <div className="relative w-48 h-48 select-none">
+        <svg viewBox="0 0 200 200" width="192" height="192" className="w-full h-full drop-shadow-xl" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <path id="topPath"    d="M 25,100 A 75,75 0 1,1 175,100" fill="none"/>
             <path id="bottomPath" d="M 25,100 A 75,75 0 0,0 175,100" fill="none"/>
@@ -85,7 +85,7 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
         <div className="vc-cert-scaler">
           <div
             id="official-verification-certificate"
-            className="relative w-[800px] h-[1540px] bg-[#FAF7ED] p-10 pb-8 text-center flex flex-col items-center box-border select-none border border-slate-200"
+            className="relative w-[800px] h-[1540px] bg-[#FAF7ED] p-18 pb-10 text-center flex flex-col items-center box-border select-none border border-slate-200"
           >
             {/* Security borders */}
             <div className="absolute inset-0        border-[20px] border-[#FAF7ED]              z-30 pointer-events-none"/>
@@ -97,10 +97,10 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
             {/* ── Top: Logo + Title ── */}
             <div className="w-full flex flex-col items-center pt-3 mb-4 relative z-10">
               <div className="mb-6 flex justify-center">
-                <Logo variant="formal" inverse={false} className="h-24"/>
+                <Logo variant="formal" inverse={false} className="h-40"/>
               </div>
               <div className="space-y-2">
-                <h1 className="text-2xl font-bold text-[#0F172A] tracking-tight uppercase font-sans">
+                <h1 className="text-4xl font-bold text-[#0F172A] tracking-tight uppercase font-sans">
                   Official Verification Certificate
                 </h1>
                 <div className="flex items-center justify-center gap-3">
@@ -112,16 +112,16 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
             </div>
 
             {/* ── Body ── */}
-            <div className="w-full flex-1 flex flex-col items-center gap-5 relative z-10">
+            <div className="w-full flex-1 flex flex-col items-center gap-10 relative z-10">
 
               {/* Asset name */}
               <div className="w-full space-y-1">
                 <p className="text-[11px] font-black text-[#94A3B8] uppercase tracking-[0.5em]">Asset Under Evaluation</p>
-                <h2 className="text-2xl font-black text-[#0F172A] tracking-tighter break-all px-8 leading-tight">{url}</h2>
+                <h2 className="text-3xl font-black text-[#0F172A] tracking-tighter break-all px-8 leading-tight">{url}</h2>
               </div>
 
               {/* Attestation paragraph */}
-              <div className="max-w-2xl w-full border-y border-[#D4AF37]/15 py-4 px-8">
+              <div className="max-w-2xl w-full border-y border-[#D4AF37]/15 py-6 px-8">
                 <p className="text-[13px] text-[#334155] leading-relaxed font-medium">
                   This document serves as formal attestation that the digital asset identified above has completed a comprehensive forensic audit protocol. This certification verifies performance alignment with professional commercial standards as established by the VelaCore Analytics verification framework.
                 </p>
@@ -131,14 +131,14 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
               <div className="flex items-center justify-center gap-10 py-3">
                 <div className="text-center">
                   <p className="text-[10px] font-black text-[#927021] uppercase tracking-[0.5em] mb-2">Evaluation Score</p>
-                  <span className="text-5xl font-black text-[#0F172A] tracking-tighter leading-none">
+                  <span className="text-7xl font-black text-[#0F172A] tracking-tighter leading-none">
                     {data.executiveSummary?.score ?? 0}%
                   </span>
                 </div>
                 <div className="w-px h-20 bg-[#D4AF37]/30"/>
                 <div className="text-center">
                   <p className="text-[10px] font-black text-[#927021] uppercase tracking-[0.5em] mb-2">Market Verdict</p>
-                  <span className="text-[20px] font-black text-[#0F172A] uppercase italic tracking-tighter leading-tight max-w-[200px] block">
+                  <span className="text-[24px] font-black text-[#0F172A] uppercase italic tracking-tighter leading-tight max-w-[200px] block">
                     {data.executiveSummary?.verdict || 'Evaluated'}
                   </span>
                 </div>
@@ -166,7 +166,7 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
                 <div className="flex items-end justify-between">
 
                   {/* Registry info */}
-                  <div className="text-left space-y-3">
+                  <div className="text-left space-y-6">
                     <div className="space-y-1.5">
                       <p className="text-[9px] font-black text-[#927021] uppercase tracking-widest">Protocol Registry ID</p>
                       <p className="font-mono text-sm font-bold text-[#0F172A] uppercase tracking-wider">{registryId}</p>
