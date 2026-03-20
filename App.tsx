@@ -15,7 +15,7 @@ import Footer from './components/Footer.tsx';
 import CookieConsent from './components/CookieConsent.tsx';
 import VerificationPortal from './views/VerificationPortal.tsx';
 import VecPricing from './views/VecPricing.tsx';
-import { saveAuditToFirebase, auth, getUserAudits, watchUserTier } from './services/firebaseService.ts';
+import { saveAuditToFirebase, auth, getUserAudits, watchUserTier, getUserProfile, saveUserProfile } from './services/firebaseService.ts';
 import { onAuthStateChanged } from 'firebase/auth';
 
 const App: React.FC = () => {
@@ -61,7 +61,7 @@ const App: React.FC = () => {
 
   // ── Auth listener + real-time tier watcher ──────────────────────────────────
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       // Clean up previous tier watcher
       if (tierWatcherRef.current) {
         tierWatcherRef.current();
@@ -69,29 +69,88 @@ const App: React.FC = () => {
       }
 
       if (firebaseUser) {
-        // Set initial user state
+        const uid = firebaseUser.uid;
+
+        // ── Step 1: Check localStorage cache (instant, no flicker) ──────────
+        const LS_KEY     = 'vc_tier_' + uid;
+        const lsRaw      = localStorage.getItem(LS_KEY);
+        let cachedTier: string  = 'Free';
+        let cachedExpiry: number = 0;
+        if (lsRaw) {
+          try {
+            const parsed = JSON.parse(lsRaw);
+            // Only use cache if subscription has not expired
+            if (parsed.tier && parsed.tierExpiresAt && Date.now() < parsed.tierExpiresAt) {
+              cachedTier   = parsed.tier;
+              cachedExpiry = parsed.tierExpiresAt;
+            } else {
+              localStorage.removeItem(LS_KEY); // expired — clear
+            }
+          } catch { localStorage.removeItem(LS_KEY); }
+        }
+
+        // Set user immediately with cached/Free tier (no flicker)
         setUser({
-          id:     firebaseUser.uid,
-          email:  firebaseUser.email || '',
-          tier:   'Free',
-          name:   firebaseUser.displayName || firebaseUser.email?.split('@')[0].toUpperCase(),
-          avatar: firebaseUser.photoURL || undefined,
+          id:            uid,
+          email:         firebaseUser.email || '',
+          tier:          cachedTier as User['tier'],
+          tierExpiresAt: cachedExpiry,
+          name:          firebaseUser.displayName || firebaseUser.email?.split('@')[0].toUpperCase(),
+          avatar:        firebaseUser.photoURL || undefined,
         });
 
-        // Watch Firestore for tier changes in real-time
-        // When vec-subscribe API confirms VEC payment → Firestore updates → this fires instantly
-        // User sees plan upgrade without any refresh or admin action
-        const unsubTier = watchUserTier(
-          firebaseUser.uid,
-          (tier, tierExpiresAt, vecWallet) => {
+        // ── Step 2: Load from Firestore (source of truth) ───────────────────
+        try {
+          const profile = await getUserProfile(uid);
+          if (profile && profile.tier && profile.tier !== 'Free') {
+            const expiresAt = profile.tierExpiresAt || 0;
+            // Check if subscription is still valid
+            const isActive = expiresAt === 0 || Date.now() < expiresAt;
+            const activeTier = isActive ? profile.tier : 'Free';
+
             setUser(prev => prev ? {
               ...prev,
-              tier,
-              tierExpiresAt,
-              vecWallet,
+              tier:          activeTier as User['tier'],
+              tierExpiresAt: profile.tierExpiresAt,
+              vecWallet:     profile.vecWallet,
             } as User : prev);
+
+            // Update localStorage cache
+            if (isActive && profile.tier !== 'Free') {
+              localStorage.setItem(LS_KEY, JSON.stringify({
+                tier:          profile.tier,
+                tierExpiresAt: profile.tierExpiresAt,
+                updatedAt:     Date.now(),
+              }));
+            }
           }
-        );
+        } catch (err) {
+          console.warn('Firestore profile load failed, using cache:', err);
+        }
+
+        // ── Step 3: Real-time watcher for instant updates ────────────────────
+        // Fires when vec-subscribe API updates Firestore after payment
+        const unsubTier = watchUserTier(uid, (tier, tierExpiresAt, vecWallet) => {
+          const LS_KEY2 = 'vc_tier_' + uid;
+          const isActive = tierExpiresAt === 0 || Date.now() < tierExpiresAt;
+          const activeTier = isActive ? tier : 'Free';
+
+          setUser(prev => prev ? {
+            ...prev,
+            tier:          activeTier as User['tier'],
+            tierExpiresAt,
+            vecWallet,
+          } as User : prev);
+
+          // Save to localStorage cache
+          if (isActive && tier !== 'Free') {
+            localStorage.setItem(LS_KEY2, JSON.stringify({
+              tier, tierExpiresAt, updatedAt: Date.now(),
+            }));
+          } else {
+            localStorage.removeItem(LS_KEY2);
+          }
+        });
         tierWatcherRef.current = unsubTier;
 
       } else {
