@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AuditReportData, User, ActionStep } from '../types';
 import Certificate from './Certificate';
 import Logo from './Logo';
-// @ts-ignore
 import html2pdf from 'html2pdf.js';
 
 interface AuditReportProps {
@@ -90,15 +89,55 @@ const AuditReport: React.FC<AuditReportProps> = ({ data, user, onLoginRequired, 
     setIsExportingCert(true);
     const element = document.getElementById('official-verification-certificate');
     if (!element) { setIsExportingCert(false); return; }
+
+    // Scroll to cert element and wait for images to load
+    element.scrollIntoView({ behavior: 'instant', block: 'start' });
+    await new Promise(r => setTimeout(r, 800));
+
+    // Wait for QR code image to load
+    const imgs = element.querySelectorAll('img');
+    await Promise.allSettled(Array.from(imgs).map(img =>
+      img.complete ? Promise.resolve() : new Promise(r => { img.onload = r; img.onerror = r; })
+    ));
+
     const opt: any = {
-      margin: 0, filename: `VelaCore_Official_Certificate_${data.auditId}.pdf`,
-      image: { type: 'jpeg', quality: 1.0 },
-      html2canvas: { scale: 4, useCORS: true, backgroundColor: '#FAF7ED', width: 800, height: 1450, windowWidth: 800, windowHeight: 1450 },
-      jsPDF: { unit: 'mm', format: [212, 384], orientation: 'portrait', compress: true },
+      margin:   0,
+      filename: `VelaCore_Certificate_${data.auditId}.pdf`,
+      image:    { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale:           3,
+        useCORS:         true,
+        allowTaint:      true,
+        backgroundColor: '#FAF7ED',
+        width:           800,
+        height:          1540,
+        windowWidth:     800,
+        windowHeight:    1540,
+        logging:         false,
+      },
+      jsPDF: {
+        unit:        'mm',
+        format:      [212, 408],
+        orientation: 'portrait',
+        compress:    true,
+      },
+      pagebreak: { mode: 'avoid-all' },
     };
-    try { await html2pdf().set(opt).from(element).save(); }
-    catch (err) { console.error('VelaCore Cert Export Failed:', err); }
-    finally { setIsExportingCert(false); }
+
+    try {
+      await html2pdf().set(opt).from(element).save();
+    } catch (err) {
+      console.error('VelaCore Cert Export Failed:', err);
+      // Fallback: try with lower scale
+      try {
+        const fallbackOpt = { ...opt, html2canvas: { ...opt.html2canvas, scale: 2 } };
+        await html2pdf().set(fallbackOpt).from(element).save();
+      } catch (err2) {
+        console.error('Fallback also failed:', err2);
+      }
+    } finally {
+      setIsExportingCert(false);
+    }
   };
 
   const phasedActions = data.actionPlan.reduce((acc, step) => {
