@@ -20,18 +20,16 @@ import {
 } from 'firebase/auth';
 import { AuditRecord, DomainLicense, CryptoPayment, User } from '../types';
 
-// ── Firebase config — fill in your values ────────────────────────────────────
 const firebaseConfig = {
-  apiKey:            "",
-  authDomain:        "velacor",
-  projectId:         "velacore",
-  storageBucket:     "velacore-..app",
-  messagingSenderId: "",
-  appId:             "1:630517813658:web:",
-  measurementId:     "G-"
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase only once
 let app: any;
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
@@ -44,7 +42,6 @@ export const auth = getAuth(app);
 
 export const isFirebaseInitialized = () => !!app && !!db && !!auth;
 
-// ── Auth ─────────────────────────────────────────────────────────────────────
 export const onAuthStateChange = (callback: (user: any) => void) => {
   return onAuthStateChanged(auth, callback);
 };
@@ -58,7 +55,6 @@ export const signOutUser = async () => {
   }
 };
 
-// ── User tier ─────────────────────────────────────────────────────────────────
 export const updateUserTier = async (userId: string, tier: User['tier']) => {
   try {
     const userRef = doc(db, "users", userId);
@@ -69,9 +65,6 @@ export const updateUserTier = async (userId: string, tier: User['tier']) => {
   }
 };
 
-// ── Real-time tier watcher ────────────────────────────────────────────────────
-// Called when VEC payment is confirmed — vec-subscribe API updates Firestore
-// onSnapshot fires instantly, user sees plan change without refresh
 export const watchUserTier = (
   userId: string,
   onUpdate: (tier: User['tier'], tierExpiresAt: number, vecWallet?: string) => void
@@ -94,7 +87,6 @@ export const watchUserTier = (
   return unsub;
 };
 
-// ── Get user profile from Firestore (tier + expiry) ─────────────────────────
 export const getUserProfile = async (userId: string): Promise<{ tier?: string; tierExpiresAt?: number; vecWallet?: string } | null> => {
   try {
     const userRef  = doc(db, 'users', userId);
@@ -114,7 +106,6 @@ export const getUserProfile = async (userId: string): Promise<{ tier?: string; t
   }
 };
 
-// ── Save user profile to Firestore ───────────────────────────────────────────
 export const saveUserProfile = async (userId: string, data: Record<string, any>): Promise<void> => {
   try {
     const userRef = doc(db, 'users', userId);
@@ -124,7 +115,6 @@ export const saveUserProfile = async (userId: string, data: Record<string, any>)
   }
 };
 
-// ── Sanitize data for Firestore ───────────────────────────────────────────────
 const sanitizeDataForFirestore = (obj: any): any => {
   if (obj === null || obj === undefined) return null;
   if (Array.isArray(obj)) return obj.map(v => sanitizeDataForFirestore(v));
@@ -141,7 +131,6 @@ const sanitizeDataForFirestore = (obj: any): any => {
   return obj;
 };
 
-// ── Audits ────────────────────────────────────────────────────────────────────
 export const getUserAudits = async (userId: string): Promise<AuditRecord[]> => {
   try {
     const auditsRef     = collection(db, "audits");
@@ -179,7 +168,6 @@ export const deleteAuditFromFirebase = async (auditId: string) => {
   }
 };
 
-// ── Payments ──────────────────────────────────────────────────────────────────
 export const recordCryptoPayment = async (payment: Omit<CryptoPayment, 'id'>) => {
   try {
     const paymentId  = `PAY-VEC-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -192,7 +180,6 @@ export const recordCryptoPayment = async (payment: Omit<CryptoPayment, 'id'>) =>
   }
 };
 
-// ── Licenses ──────────────────────────────────────────────────────────────────
 export const getDomainLicenses = async (userId: string): Promise<DomainLicense[]> => {
   try {
     const licensesRef   = collection(db, "licenses");
@@ -205,7 +192,6 @@ export const getDomainLicenses = async (userId: string): Promise<DomainLicense[]
   }
 };
 
-// ── Connection test ───────────────────────────────────────────────────────────
 export const testFirebaseConnection = async () => {
   try {
     await setDoc(doc(db, "_test_", "connection-test"), { timestamp: Date.now() }, { merge: true });
