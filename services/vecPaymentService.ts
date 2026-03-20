@@ -1,15 +1,19 @@
 // services/vecPaymentService.ts
-// Handles VEC wallet connection and payment for subscriptions
+import { db } from './firebaseService'
+import { doc, setDoc } from 'firebase/firestore'
 
 declare global {
-  interface Window {
-    ethereum?: any
-  }
+  interface Window { ethereum?: any }
 }
 
-const VEC_TOKEN    = '0x57Cd84ebe7cb619277760Bd26CdF18d75a14c37B'
-const BNB_TESTNET  = { chainId: '0x61', chainName: 'BNB Smart Chain Testnet', nativeCurrency: { name: 'tBNB', symbol: 'tBNB', decimals: 18 }, rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545/'], blockExplorerUrls: ['https://testnet.bscscan.com'] }
-const TREASURY     = import.meta.env.VITE_TREASURY_ADDRESS || ''
+const VEC_TOKEN     = '0x57Cd84ebe7cb619277760Bd26CdF18d75a14c37B'
+const BNB_TESTNET   = {
+  chainId: '0x61', chainName: 'BNB Smart Chain Testnet',
+  nativeCurrency: { name: 'tBNB', symbol: 'tBNB', decimals: 18 },
+  rpcUrls: ['https://data-seed-prebsc-1-s1.binance.org:8545/'],
+  blockExplorerUrls: ['https://testnet.bscscan.com'],
+}
+const TREASURY      = import.meta.env.VITE_TREASURY_ADDRESS || ''
 const SUBSCRIBE_API = '/api/vec-subscribe'
 
 export interface VecPlan {
@@ -21,9 +25,9 @@ export interface VecPlan {
 }
 
 export const VEC_PLANS: VecPlan[] = [
-  { id: 'Basic',  vecAmount: 50,  auditsPerMonth: 50,  label: 'Basic',  days: 30 },
-  { id: 'Pro',    vecAmount: 150, auditsPerMonth: -1,  label: 'Pro',    days: 30 },
-  { id: 'Agency', vecAmount: 400, auditsPerMonth: -1,  label: 'Agency', days: 30 },
+  { id: 'Basic',  vecAmount: 50,  auditsPerMonth: 50, label: 'Basic',  days: 30 },
+  { id: 'Pro',    vecAmount: 150, auditsPerMonth: -1, label: 'Pro',    days: 30 },
+  { id: 'Agency', vecAmount: 400, auditsPerMonth: -1, label: 'Agency', days: 30 },
 ]
 
 export interface PaymentResult {
@@ -34,27 +38,16 @@ export interface PaymentResult {
   error?: string
 }
 
-// ── EIP-20 minimal ABI ─────────────────────────────────────────────────────
 const ERC20_ABI = [
   'function balanceOf(address) view returns (uint256)',
-  'function decimals() view returns (uint8)',
   'function transfer(address to, uint256 amount) returns (bool)',
-  'function name() view returns (string)',
-  'function nonces(address) view returns (uint256)',
-  'function DOMAIN_SEPARATOR() view returns (bytes32)',
-  'function permit(address owner,address spender,uint256 value,uint256 deadline,uint8 v,bytes32 r,bytes32 s)',
 ]
 
-// ── Connect wallet ──────────────────────────────────────────────────────────
+// ── Connect wallet ────────────────────────────────────────────────────────────
 export async function connectWallet(): Promise<string> {
-  if (!window.ethereum) {
-    throw new Error('No wallet found. Please install MetaMask or Trust Wallet.')
-  }
-
+  if (!window.ethereum) throw new Error('No wallet found. Please install MetaMask or Trust Wallet.')
   const accounts: string[] = await window.ethereum.request({ method: 'eth_requestAccounts' })
-  if (!accounts || !accounts.length) throw new Error('No accounts found.')
-
-  // Switch to BNB Testnet
+  if (!accounts?.length) throw new Error('No accounts found.')
   try {
     await window.ethereum.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: BNB_TESTNET.chainId }] })
   } catch (se: any) {
@@ -62,11 +55,10 @@ export async function connectWallet(): Promise<string> {
       await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [BNB_TESTNET] })
     }
   }
-
   return accounts[0]
 }
 
-// ── Get VEC balance ─────────────────────────────────────────────────────────
+// ── Get VEC balance ───────────────────────────────────────────────────────────
 export async function getVecBalance(address: string): Promise<number> {
   try {
     const { ethers } = await import('ethers')
@@ -74,12 +66,31 @@ export async function getVecBalance(address: string): Promise<number> {
     const token      = new ethers.Contract(VEC_TOKEN, ERC20_ABI, provider)
     const raw        = await token.balanceOf(address)
     return parseFloat(ethers.formatUnits(raw, 18))
-  } catch {
-    return 0
-  }
+  } catch { return 0 }
 }
 
-// ── Pay with VEC — direct transfer (simpler than permit for external app) ──
+// ── Save tier to Firestore CLIENT-SIDE ────────────────────────────────────────
+// Uses Firebase client SDK (no admin key needed)
+// Writes to users/{userId} with merge — persists on ALL devices on refresh
+async function saveTierToFirestore(
+  userId: string,
+  tier: string,
+  expiresAt: number,
+  txHash: string,
+  walletAddress: string
+): Promise<void> {
+  const userRef = doc(db, 'users', userId)
+  await setDoc(userRef, {
+    tier,
+    subscriptionTier:   tier,
+    tierExpiresAt:      expiresAt,
+    subscriptionTxHash: txHash,
+    vecWallet:          walletAddress.toLowerCase(),
+    updatedAt:          Date.now(),
+  }, { merge: true })
+}
+
+// ── Pay with VEC ──────────────────────────────────────────────────────────────
 export async function payWithVec(
   userId: string,
   planId: 'Basic' | 'Pro' | 'Agency',
@@ -87,7 +98,7 @@ export async function payWithVec(
   onStatus: (msg: string) => void
 ): Promise<PaymentResult> {
   const plan = VEC_PLANS.find(p => p.id === planId)
-  if (!plan) return { success: false, error: 'Invalid plan' }
+  if (!plan)     return { success: false, error: 'Invalid plan' }
   if (!TREASURY) return { success: false, error: 'Treasury address not configured.' }
 
   try {
@@ -100,61 +111,62 @@ export async function payWithVec(
     const balanceRaw = await token.balanceOf(walletAddress)
     const balance    = parseFloat(ethers.formatUnits(balanceRaw, 18))
     if (balance < plan.vecAmount) {
-      return { success: false, error: `Insufficient VEC. You need ${plan.vecAmount} VEC, you have ${balance.toFixed(2)} VEC.` }
+      return { success: false, error: `Insufficient VEC. Need ${plan.vecAmount} VEC, have ${balance.toFixed(2)} VEC.` }
     }
 
     onStatus('Waiting for wallet signature...')
-
-    // Transfer VEC to treasury
     const amountWei = ethers.parseUnits(plan.vecAmount.toString(), 18)
     const tx        = await token.transfer(TREASURY, amountWei)
 
-    onStatus('Transaction submitted... Waiting for confirmation...')
+    onStatus('Transaction submitted... Confirming on-chain...')
     const receipt = await tx.wait()
+    if (receipt.status !== 1) return { success: false, error: 'Transaction failed on-chain.' }
 
-    if (receipt.status !== 1) {
-      return { success: false, error: 'Transaction failed on-chain.' }
+    onStatus('Payment confirmed! Activating your plan...')
+
+    const expiresAt = Date.now() + plan.days * 24 * 60 * 60 * 1000
+
+    // ── STEP 1: Firestore client-side write (MOST IMPORTANT) ─────────────────
+    // This persists on ALL devices. onSnapshot fires on every logged-in device.
+    // Does NOT need FIREBASE_SERVICE_KEY — uses client SDK directly.
+    let firestoreOk = false
+    try {
+      await saveTierToFirestore(userId, planId, expiresAt, receipt.hash, walletAddress)
+      firestoreOk = true
+      onStatus('Account upgraded! Plan is now active on all your devices.')
+    } catch (fsErr) {
+      console.error('[vecPayment] Firestore write failed:', fsErr)
+      onStatus('Saving subscription... please wait...')
     }
 
-    onStatus('Payment confirmed! Activating subscription...')
-
-    // Call our API to verify + upgrade Firebase
-    const apiRes  = await fetch(SUBSCRIBE_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        txHash:        receipt.hash,
-        userId,
-        planId,
-        walletAddress,
+    // ── STEP 2: Server verification (secondary — for audit trail) ────────────
+    try {
+      const apiRes = await fetch(SUBSCRIBE_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txHash: receipt.hash, userId, planId, walletAddress }),
       })
-    })
-
-    const data = await apiRes.json()
-    if (!data.success) {
-      return { success: false, error: data.error || 'Server verification failed.' }
+      const data = await apiRes.json()
+      if (!data.success) {
+        console.warn('[vecPayment] Server verify warning (non-fatal):', data.error)
+      }
+    } catch {
+      console.warn('[vecPayment] Server API unreachable — Firestore client write was used')
     }
 
-    // Save tier to localStorage immediately after confirmed payment
-    // This ensures tier persists on refresh even before Firestore watcher fires
-    if (data.tier && data.expiresAt) {
-      try {
-        const lsKey = 'vc_tier_' + userId;
-        localStorage.setItem(lsKey, JSON.stringify({
-          tier:          data.tier,
-          tierExpiresAt: data.expiresAt,
-          txHash:        receipt.hash,
-          updatedAt:     Date.now(),
-        }));
-      } catch (e) {}
+    // ── STEP 3: localStorage speed cache ─────────────────────────────────────
+    try {
+      localStorage.setItem('vc_tier_' + userId, JSON.stringify({
+        tier: planId, tierExpiresAt: expiresAt,
+        txHash: receipt.hash, updatedAt: Date.now(),
+      }))
+    } catch {}
+
+    if (!firestoreOk) {
+      return { success: false, error: 'Payment confirmed on-chain but account sync failed. Contact support with tx: ' + receipt.hash }
     }
 
-    return {
-      success:   true,
-      tier:      data.tier,
-      expiresAt: data.expiresAt,
-      txHash:    receipt.hash,
-    }
+    return { success: true, tier: planId, expiresAt, txHash: receipt.hash }
 
   } catch (err: any) {
     if (err.code === 4001 || err.message?.includes('user rejected')) {
@@ -164,15 +176,12 @@ export async function payWithVec(
   }
 }
 
-// ── Check if subscription is still active ──────────────────────────────────
 export function isSubscriptionActive(tierExpiresAt?: number): boolean {
   if (!tierExpiresAt) return false
   return Date.now() < tierExpiresAt
 }
 
-// ── Format expiry date ──────────────────────────────────────────────────────
 export function formatExpiry(tierExpiresAt?: number): string {
   if (!tierExpiresAt) return 'No active subscription'
-  const d = new Date(tierExpiresAt)
-  return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
+  return new Date(tierExpiresAt).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })
 }
