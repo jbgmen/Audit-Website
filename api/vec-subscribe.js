@@ -112,6 +112,31 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
 
   if (req.method === 'GET') {
+    // GET ?tier=userId — check stored tier (for Firestore verification)
+    const checkUserId = req.query && req.query.tier;
+    if (checkUserId && FIREBASE_KEY) {
+      try {
+        const sa      = JSON.parse(FIREBASE_KEY);
+        const token   = await getFirebaseToken(sa);
+        const projId  = sa.project_id;
+        const path    = '/v1/projects/' + projId + '/databases/(default)/documents/users/' + checkUserId;
+        const fsData  = await new Promise((resolve, reject) => {
+          const r = require('https').get({ hostname: 'firestore.googleapis.com', path, headers: { Authorization: 'Bearer ' + token } }, (res) => {
+            let d = ''; res.on('data', c => d += c); res.on('end', () => { try { resolve(JSON.parse(d)) } catch(e) { resolve({}) } });
+          });
+          r.on('error', reject);
+        });
+        const fields = fsData.fields || {};
+        return res.status(200).json({
+          success: true,
+          tier:          fields.tier?.stringValue || 'Free',
+          tierExpiresAt: parseInt(fields.tierExpiresAt?.integerValue || '0'),
+          vecWallet:     fields.vecWallet?.stringValue || '',
+        });
+      } catch(err) {
+        return res.status(200).json({ success: false, error: err.message });
+      }
+    }
     return res.status(200).json({
       success: true, plans: PLANS, vecToken: VEC_TOKEN, treasury: TREASURY,
       configured: { treasury: !!TREASURY, firebase: !!FIREBASE_KEY, rpc: !!RPC_URL }
