@@ -14,393 +14,456 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ user, onLogout, onBack, setView, onSelectAudit, onDeleteAudit }) => {
-  const [audits, setAudits] = useState<AuditRecord[]>([]);
-  const [isLoadingAudits, setIsLoadingAudits] = useState(true);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [name, setName] = useState(user.name || '');
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [isDownloading, setIsDownloading] = useState<string | null>(null);
+  const [audits,         setAudits]         = useState<AuditRecord[]>([]);
+  const [isLoadingAudits,setIsLoadingAudits] = useState(true);
+  const [isUpdating,     setIsUpdating]     = useState(false);
+  const [name,           setName]           = useState(user.name || '');
+  const [saveStatus,     setSaveStatus]     = useState<'idle'|'success'|'error'>('idle');
+  const [isDownloading,  setIsDownloading]  = useState<string|null>(null);
   const [domainLicenses, setDomainLicenses] = useState<DomainLicense[]>([]);
-  
-  // Custom Modal State for Deletion
-  const [purgeTarget, setPurgeTarget] = useState<AuditRecord | null>(null);
-  const [isDeleting, setIsDeleting] = useState<string | null>(null);
-  
-  const [folders, setFolders] = useState([
-    { name: 'Master Registry', count: 0, active: true }
-  ]);
-  
-  const [notes, setNotes] = useState<Record<string, string>>({});
-  const [isNoteVisible, setIsNoteVisible] = useState<string | null>(null);
+  const [purgeTarget,    setPurgeTarget]    = useState<AuditRecord|null>(null);
+  const [isDeleting,     setIsDeleting]     = useState<string|null>(null);
+  const [notes,          setNotes]          = useState<Record<string,string>>({});
+  const [noteOpen,       setNoteOpen]       = useState<string|null>(null);
+  const [activeTab,      setActiveTab]      = useState<'audits'|'certs'|'settings'>('audits');
 
   useEffect(() => {
-    const fetchProfileData = async () => {
+    const fetch = async () => {
       setIsLoadingAudits(true);
       try {
         const [auditData, licenseData] = await Promise.all([
           getUserAudits(user.id),
-          getDomainLicenses(user.id)
+          getDomainLicenses(user.id),
         ]);
         setAudits(auditData || []);
         setDomainLicenses(licenseData || []);
-        setFolders(prev => prev.map(f => f.name === 'Master Registry' ? { ...f, count: (auditData || []).length } : f));
-      } catch (err) {
-        console.error("Profile Fetch Error:", err);
-      } finally {
-        setIsLoadingAudits(false);
-      }
+      } catch (err) { console.error('Profile Fetch Error:', err); }
+      finally { setIsLoadingAudits(false); }
     };
-    fetchProfileData();
+    fetch();
   }, [user.id]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsUpdating(true);
-    setSaveStatus('idle');
+    setIsUpdating(true); setSaveStatus('idle');
     try {
       if (auth.currentUser) {
-        // Use functional updateProfile from firebase/auth
         await updateProfile(auth.currentUser, { displayName: name });
         setSaveStatus('success');
         setTimeout(() => setSaveStatus('idle'), 3000);
       }
-    } catch (err) {
-      console.error(err);
-      setSaveStatus('error');
-    } finally {
-      setIsUpdating(false);
-    }
+    } catch { setSaveStatus('error'); }
+    finally { setIsUpdating(false); }
   };
 
   const executePurge = async () => {
     if (!purgeTarget) return;
-    const auditId = purgeTarget.id;
-    setIsDeleting(auditId);
+    setIsDeleting(purgeTarget.id);
     try {
-      await deleteAuditFromFirebase(auditId);
-      setAudits(prev => prev.filter(a => a.id !== auditId));
-      setFolders(prev => prev.map(f => f.name === 'Master Registry' ? { ...f, count: Math.max(0, f.count - 1) } : f));
-      if (onDeleteAudit) onDeleteAudit(auditId);
+      await deleteAuditFromFirebase(purgeTarget.id);
+      setAudits(p => p.filter(a => a.id !== purgeTarget.id));
+      if (onDeleteAudit) onDeleteAudit(purgeTarget.id);
       setPurgeTarget(null);
-    } catch (err) {
-      console.error("Purge Error:", err);
-      alert("PROTOCOL ERROR: Cloud infrastructure denied deletion request.");
-    } finally {
-      setIsDeleting(null);
-    }
-  };
-
-  const handleNewFolder = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const folderName = prompt("Enter Folder Identity Name:");
-    if (folderName && folderName.trim()) {
-      setFolders([...folders, { name: folderName.trim(), count: 0, active: false }]);
-    }
-  };
-
-  const handleSaveNote = (id: string) => {
-    alert(`Protocol Note for ID [${id}] has been synchronized with your account.`);
-  };
-
-  const handleDownloadAsset = (e: React.MouseEvent, audit: AuditRecord) => {
-    e.stopPropagation(); 
-    setIsDownloading(audit.id);
-    alert(`Compiling official PDF report for Registry ID ${audit.id.slice(0, 8)}...`);
-    if (onSelectAudit) onSelectAudit(audit);
-    setTimeout(() => {
-      setIsDownloading(null);
-    }, 1500);
+    } catch { alert('PROTOCOL ERROR: Deletion denied.'); }
+    finally { setIsDeleting(null); }
   };
 
   const getFavicon = (url?: string) => {
     if (!url) return null;
     try {
-      const cleanUrl = url.replace(/^(https?:\/\/)?(www\.)?/, '');
-      const domain = cleanUrl.split('/')[0];
+      const domain = url.replace(/^(https?:\/\/)?(www\.)?/,'').split('/')[0];
       return `https://www.google.com/s2/favicons?sz=64&domain=${domain}`;
-    } catch (e) {
-      return null;
-    }
+    } catch { return null; }
   };
 
-  const planInfo = {
-    type: user.tier === 'Free' ? 'Standard Access' : `${user.tier} License`,
-    status: 'Active',
-    price: user.tier === 'Free' ? '$0.00' : '$49.00',
-    renewal: 'February 28, 2026',
-    auditsUsed: audits.length,
-    auditLimit: user.tier === 'Free' ? 5 : 50,
-    certsUsed: audits.filter(a => (a.data?.executiveSummary?.score ?? 0) >= 75).length,
-    certLimit: user.tier === 'Free' ? 1 : 50
-  };
+  const tier     = user.tier || 'Free';
+  const certAudits = audits.filter(a => (a.data?.executiveSummary?.score ?? 0) >= 75);
 
-  const SectionTitle = ({ children, subtitle, action }: { children?: React.ReactNode, subtitle?: string, action?: React.ReactNode }) => (
-    <div className="mb-6 sm:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
-      <div className="space-y-1">
-        <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight uppercase leading-none">{children}</h3>
-        {subtitle && <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">{subtitle}</p>}
-      </div>
-      {action && <div className="w-full sm:w-auto">{action}</div>}
-    </div>
-  );
+  const TIER_COLOR: Record<string, string> = {
+    Free: '#6b7280', Basic: '#2563eb', Pro: '#7c3aed', Agency: '#b8860b',
+  };
+  const tierColor = TIER_COLOR[tier] || TIER_COLOR.Free;
+
+  const stats = [
+    { label: 'Total Audits',   value: audits.length,       icon: '🔍' },
+    { label: 'Certificates',   value: certAudits.length,   icon: '🏆' },
+    { label: 'Avg Score',      value: audits.length ? Math.round(audits.reduce((s,a) => s + (a.data?.executiveSummary?.score ?? 0), 0) / audits.length) + '%' : '—', icon: '📊' },
+    { label: 'Plan',           value: tier,                icon: '⭐' },
+  ];
 
   return (
     <>
-      {/* High-Fidelity Purge Modal - Fixed Centering outside transformed context */}
+      <style>{`
+        .pr-tab { padding: 9px 18px; border-radius: 999px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; border: none; cursor: pointer; transition: all 0.18s; }
+        .pr-tab.active { background: #0f172a; color: #fff; }
+        .pr-tab.inactive { background: transparent; color: #94a3b8; }
+        .pr-tab.inactive:hover { color: #0f172a; background: rgba(15,23,42,0.05); }
+        .pr-card { background: #fff; border: 1px solid #f1f5f9; border-radius: 20px; transition: all 0.18s; }
+        .pr-card:hover { border-color: #e2e8f0; box-shadow: 0 4px 24px rgba(15,23,42,0.06); }
+        .pr-input { width: 100%; padding: 12px 18px; border-radius: 12px; border: 1.5px solid #e2e8f0; background: #f8fafc; font-size: 13px; font-weight: 600; color: #0f172a; outline: none; transition: all 0.18s; }
+        .pr-input:focus { border-color: #0f172a; background: #fff; box-shadow: 0 0 0 3px rgba(15,23,42,0.06); }
+        .pr-audit-row { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 14px; transition: background 0.14s; cursor: pointer; }
+        .pr-audit-row:hover { background: #f8fafc; }
+        @media (max-width: 640px) {
+          .pr-tab { padding: 7px 13px; font-size: 9.5px; }
+        }
+      `}</style>
+
+      {/* ── Purge Modal ── */}
       {purgeTarget && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 bg-[#020617]/90 backdrop-blur-2xl">
-           <div className="w-full max-w-md bg-white rounded-[2rem] sm:rounded-[3rem] overflow-hidden border border-white/20 shadow-[0_40px_100px_rgba(0,0,0,0.5)] animate-in zoom-in duration-300">
-              <div className="bg-rose-600 p-8 sm:p-10 text-center">
-                 <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6">
-                    <svg className="w-8 h-8 sm:w-10 sm:h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                 </div>
-                 <h4 className="text-white text-xl sm:text-2xl font-black uppercase tracking-tighter">Confirm Data Purge</h4>
-                 <p className="text-rose-100 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.3em] sm:tracking-[0.4em] mt-2">Action is irreversible</p>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-[#020617]/90 backdrop-blur-xl">
+          <div className="w-full max-w-sm bg-white rounded-[2rem] overflow-hidden shadow-[0_40px_100px_rgba(0,0,0,0.5)] animate-in zoom-in duration-300">
+            <div className="bg-rose-600 p-8 text-center">
+              <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
               </div>
-              <div className="p-8 sm:p-10 space-y-6 sm:space-y-8">
-                 <div className="space-y-3 sm:space-y-4 text-center">
-                    <p className="text-sm sm:text-base text-slate-500 font-medium italic leading-relaxed">
-                       You are about to permanently remove the audit record for 
-                       <span className="text-slate-900 font-black block mt-2 text-lg sm:text-xl break-all">"{purgeTarget.data?.overview?.websiteName || purgeTarget.url}"</span>
-                    </p>
-                 </div>
-                 <div className="flex flex-col gap-3 sm:gap-4">
-                    <button 
-                       disabled={isDeleting === purgeTarget.id}
-                       onClick={executePurge}
-                       className="w-full py-4 sm:py-5 bg-rose-600 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] sm:tracking-[0.3em] rounded-xl sm:rounded-2xl shadow-xl hover:bg-rose-700 transition-all active:scale-95 flex items-center justify-center gap-3"
-                    >
-                       {isDeleting === purgeTarget.id ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div> : <span>Execute Purge Protocol</span>}
-                    </button>
-                    <button onClick={() => setPurgeTarget(null)} className="w-full py-4 text-slate-400 text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:text-slate-900 transition-all">Abort Deletion</button>
-                 </div>
-              </div>
-           </div>
+              <h4 className="text-white text-xl font-black uppercase tracking-tighter">Confirm Data Purge</h4>
+              <p className="text-rose-100 text-[9px] font-black uppercase tracking-[0.4em] mt-1">This action is irreversible</p>
+            </div>
+            <div className="p-8 space-y-6">
+              <p className="text-sm text-slate-500 font-medium italic leading-relaxed text-center">
+                Permanently remove audit for
+                <span className="block text-slate-900 font-black text-base mt-1 not-italic break-all">"{purgeTarget.data?.overview?.websiteName || purgeTarget.url}"</span>
+              </p>
+              <button disabled={isDeleting === purgeTarget.id} onClick={executePurge}
+                className="w-full py-4 bg-rose-600 text-white text-[11px] font-black uppercase tracking-[0.3em] rounded-xl shadow-lg hover:bg-rose-700 transition-all active:scale-95 flex items-center justify-center gap-3 cursor-pointer border-0">
+                {isDeleting === purgeTarget.id ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : 'Execute Purge Protocol'}
+              </button>
+              <button onClick={() => setPurgeTarget(null)} className="w-full py-3 text-slate-400 text-[9px] font-black uppercase tracking-widest hover:text-slate-900 transition-all bg-transparent border-0 cursor-pointer">
+                Abort
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-10 py-8 sm:py-12 md:py-20 animate-in fade-in slide-in-from-bottom-6 duration-700 relative">
-        <div className="mb-12 sm:mb-16 pb-8 sm:pb-12 border-b border-slate-100">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 md:gap-10">
-            <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-6 sm:gap-8">
-              <div className="w-20 h-20 md:w-24 md:h-24 rounded-2xl sm:rounded-[2rem] bg-slate-900 flex-shrink-0 flex items-center justify-center text-white text-3xl font-black shadow-2xl overflow-hidden border-2 border-accent/20">
-                {user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).parentElement!.innerHTML = `<span class="text-3xl font-black">${(user.name?.[0] || user.email?.[0]).toUpperCase()}</span>` }} /> : (user.name ? user.name[0] : user.email[0]).toUpperCase()}
+      <div className="min-h-screen bg-[#fafaf8]">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-10 py-8 sm:py-12 md:py-16">
+
+          {/* ── Header ── */}
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-6 mb-8 sm:mb-12">
+
+            {/* Left: avatar + info */}
+            <div className="flex items-center gap-4 sm:gap-6">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-[#0f172a] flex-shrink-0 flex items-center justify-center text-2xl sm:text-3xl font-black shadow-xl overflow-hidden border-2" style={{ borderColor: tierColor + '40' }}>
+                {user.avatar
+                  ? <img src={user.avatar} className="w-full h-full object-cover"
+                      onError={e => { (e.target as HTMLImageElement).style.display='none'; (e.target as HTMLImageElement).parentElement!.innerHTML = `<span class="text-2xl font-black" style="color:#d4a017">${(user.name?.[0]||user.email?.[0]||'U').toUpperCase()}</span>`; }}/>
+                  : <span style={{ color: '#d4a017' }}>{(user.name?.[0]||user.email?.[0]||'U').toUpperCase()}</span>
+                }
               </div>
-              <div className="space-y-1 sm:space-y-2 flex-1 min-w-0">
-                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4">
-                  <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-slate-900 tracking-tighter leading-none truncate max-w-full">{user.name || 'Registry User'}</h1>
-                  <span className="px-2.5 py-1 rounded-full bg-[#D4AF37] text-white text-[7px] sm:text-[8px] font-black uppercase tracking-widest shrink-0">{planInfo.type}</span>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-slate-900 tracking-tighter leading-none">{user.name || 'Registry User'}</h1>
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[9px] font-black uppercase tracking-wide border"
+                    style={{ color: tierColor, background: tierColor + '12', borderColor: tierColor + '30' }}>
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: tierColor }}/>
+                    {tier}
+                  </span>
                 </div>
-                <p className="text-slate-400 font-bold text-xs sm:text-sm uppercase tracking-widest max-w-lg mx-auto sm:mx-0">Manage your audits, certificates, usage, and account settings.</p>
+                <p className="text-xs sm:text-sm text-slate-400 font-medium mt-1 truncate max-w-[220px] sm:max-w-xs">{user.email}</p>
+                <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest font-mono mt-1">ID: {user.id.slice(0,14)}…</p>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
-              <div className="text-center sm:text-right">
-                <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">Registry ID</p>
-                <p className="text-[10px] sm:text-xs font-mono font-bold text-slate-900">{user.id.slice(0, 12)}...</p>
-              </div>
-              <button onClick={onLogout} className="w-full sm:w-auto px-6 sm:px-8 py-3.5 sm:py-4 rounded-xl sm:rounded-2xl border-2 border-slate-100 text-slate-900 text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-rose-50 hover:text-rose-600 hover:border-rose-100 transition-all active:scale-95">Disconnect Protocol</button>
+
+            {/* Right: actions */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <button onClick={() => setView('pricing')}
+                className="px-4 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wide border transition-all hover:-translate-y-0.5 cursor-pointer"
+                style={{ color: tierColor, borderColor: tierColor + '40', background: tierColor + '08' }}>
+                Upgrade Plan
+              </button>
+              <button onClick={onLogout}
+                className="px-4 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-[11px] font-black uppercase tracking-wide border border-slate-200 text-slate-500 hover:border-rose-200 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer bg-transparent">
+                Sign Out
+              </button>
             </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 sm:gap-16">
-          <div className="lg:col-span-4 space-y-10 sm:space-y-16">
-            <section className="bg-slate-50 p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-100 space-y-6 sm:space-y-8">
-              <SectionTitle subtitle="Quota Intelligence">Consumption Matrix</SectionTitle>
-              <div className="space-y-5 sm:space-y-6">
-                <div className="space-y-2 sm:space-y-3">
-                  <div className="flex justify-between items-center text-[9px] sm:text-[10px] font-black uppercase tracking-widest">
-                    <span className="text-slate-400">Monthly Audits</span>
-                    <span className="text-slate-900">{planInfo.auditsUsed} / {planInfo.auditLimit}</span>
-                  </div>
-                  <div className="h-2 w-full bg-white rounded-full overflow-hidden border border-slate-100">
-                    <div className="h-full bg-slate-900 rounded-full transition-all duration-1000" style={{ width: `${Math.min((planInfo.auditsUsed / planInfo.auditLimit) * 100, 100)}%` }}></div>
-                  </div>
-                </div>
-                <div className="space-y-2 sm:space-y-3">
-                  <div className="flex justify-between items-center text-[9px] sm:text-[10px] font-black uppercase tracking-widest">
-                    <span className="text-slate-400">Active Certificates</span>
-                    <span className="text-slate-900">{planInfo.certsUsed} / {planInfo.certLimit}</span>
-                  </div>
-                  <div className="h-2 w-full bg-white rounded-full overflow-hidden border border-slate-100">
-                    <div className="h-full bg-[#D4AF37] rounded-full transition-all duration-1000" style={{ width: `${Math.min((planInfo.certsUsed / planInfo.certLimit) * 100, 100)}%` }}></div>
-                  </div>
-                </div>
+          {/* ── Stats row ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-10">
+            {stats.map((s, i) => (
+              <div key={i} className="pr-card p-4 sm:p-5 flex flex-col gap-2">
+                <span className="text-xl sm:text-2xl">{s.icon}</span>
+                <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tighter leading-none">{s.value}</span>
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">{s.label}</span>
               </div>
-            </section>
-
-            <section>
-              <SectionTitle subtitle="Account Authority">Identity Settings</SectionTitle>
-              <form onSubmit={handleUpdateProfile} className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest ml-3">Full Legal Name</label>
-                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="w-full px-5 py-3.5 sm:px-6 sm:py-4 rounded-xl sm:rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:border-slate-900 transition-all outline-none font-bold text-slate-900 text-sm" />
-                </div>
-                <button disabled={isUpdating} className={`w-full py-4 rounded-xl sm:rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl active:scale-[0.98] ${saveStatus === 'success' ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white hover:bg-slate-800'}`}>
-                  {isUpdating ? 'Synchronizing...' : saveStatus === 'success' ? 'Protocol Updated ✓' : 'Update Identity'}
-                </button>
-              </form>
-            </section>
-
-            <section className="p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2.5rem] border border-slate-100 bg-white relative overflow-hidden group">
-              <SectionTitle subtitle="Collaboration">Team Protocol</SectionTitle>
-              <div className="space-y-4 filter blur-[2px] opacity-40 pointer-events-none select-none">
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50">
-                  <div className="w-8 h-8 rounded-full bg-slate-200"></div>
-                  <div className="h-3 w-24 bg-slate-200 rounded"></div>
-                </div>
-              </div>
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60 p-6 sm:p-8 text-center">
-                <span className="text-[8px] sm:text-[9px] font-black text-slate-900 bg-slate-100 px-3 py-1 rounded-full uppercase tracking-[0.15em] sm:tracking-[0.2em] mb-4 border border-slate-200">Agency Feature</span>
-                <button onClick={() => setView('pricing')} className="text-[8px] sm:text-[9px] font-black uppercase tracking-widest text-slate-900 underline hover:text-slate-600 transition-colors">View Agency Benefits</button>
-              </div>
-            </section>
+            ))}
           </div>
 
-          <div className="lg:col-span-8 space-y-16 sm:space-y-20">
-            <section>
-               <SectionTitle subtitle="Asset Organization" action={<button onClick={handleNewFolder} className="w-full sm:w-auto px-4 py-2 bg-slate-50 rounded-xl text-[9px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-900 hover:bg-slate-100 transition-all shadow-sm">+ New Folder</button>}>Client Directories</SectionTitle>
-               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-                  {folders.map((folder, idx) => (
-                    <div key={idx} className={`p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] border-2 transition-all group cursor-pointer flex flex-col gap-5 sm:gap-6 ${folder.active ? 'border-slate-900 bg-white shadow-xl' : 'border-slate-100 bg-slate-50/50 opacity-60'}`}>
-                       <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl flex items-center justify-center transition-all ${folder.active ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-400'}`}><svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg></div>
-                       <div>
-                          <p className={`text-sm sm:text-base font-black uppercase tracking-tight ${folder.active ? 'text-slate-900' : 'text-slate-500'}`}>{folder.name}</p>
-                          <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">{folder.count} Verification Assets</p>
-                       </div>
+          {/* ── Usage bars ── */}
+          <div className="pr-card p-5 sm:p-7 mb-8 sm:mb-10">
+            <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">Consumption Matrix</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-8">
+              {[
+                { label: 'Monthly Audits',      used: audits.length,       limit: tier === 'Free' ? 3 : tier === 'Basic' ? 50 : 999, barColor: '#0f172a' },
+                { label: 'Active Certificates', used: certAudits.length,   limit: tier === 'Free' ? 1 : 50,                          barColor: '#d4a017' },
+              ].map((item, i) => {
+                const pct = item.limit >= 999 ? 100 : Math.min((item.used / item.limit) * 100, 100);
+                return (
+                  <div key={i} className="space-y-2">
+                    <div className="flex justify-between items-center text-[9px] sm:text-[10px] font-black uppercase tracking-widest">
+                      <span className="text-slate-400">{item.label}</span>
+                      <span className="text-slate-700">{item.used} / {item.limit >= 999 ? '∞' : item.limit}</span>
                     </div>
-                  ))}
-               </div>
-            </section>
+                    <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all duration-1000" style={{ width: `${pct}%`, background: item.barColor }}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-            <section id="verification-records">
-              <SectionTitle subtitle="Historical Protocol Registry">Verification Records</SectionTitle>
-              <div className="overflow-hidden border border-slate-100 rounded-[1.5rem] sm:rounded-[3rem] bg-white shadow-xl">
-                <div className="w-full overflow-x-auto">
-                  <table className="w-full text-left table-auto min-w-[600px] sm:min-w-0">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-100 text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] sm:tracking-[0.3em]">
-                        <th className="px-6 sm:px-8 py-5 sm:py-6">Digital Asset</th>
-                        <th className="px-6 sm:px-8 py-5 sm:py-6">Score & Status</th>
-                        <th className="px-6 sm:px-8 py-5 sm:py-6 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {isLoadingAudits ? (
-                        <tr><td colSpan={3} className="p-16 sm:p-20 text-center text-[9px] sm:text-[10px] font-black text-slate-300 uppercase tracking-widest animate-pulse">Querying Records...</td></tr>
-                      ) : audits.length === 0 ? (
-                        <tr><td colSpan={3} className="p-16 sm:p-20 text-center text-slate-400 font-medium italic">No verification records initialized.</td></tr>
-                      ) : audits.map((audit) => (
-                        <React.Fragment key={audit.id}>
-                          <tr className={`group hover:bg-slate-50/50 transition-colors cursor-pointer ${isDeleting === audit.id ? 'opacity-40 pointer-events-none' : ''}`}>
-                            <td className="px-6 sm:px-8 py-6 sm:py-8" onClick={() => onSelectAudit && onSelectAudit(audit)}>
-                              <div className="flex items-center gap-3 sm:gap-4">
-                                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
-                                  {getFavicon(audit.data?.overview?.websiteUrl) ? <img src={getFavicon(audit.data?.overview?.websiteUrl)!} alt="" className="w-5 h-5 sm:w-6 sm:h-6 object-contain" /> : <svg className="w-4 h-4 sm:w-5 sm:h-5 text-slate-200" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>}
-                                </div>
-                                <div className="flex flex-col gap-0.5 overflow-hidden">
-                                  <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight truncate block">{audit.data?.overview?.websiteName || 'Unknown Asset'}</span>
-                                  <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 truncate block">{audit.url}</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 sm:px-8 py-6 sm:py-8" onClick={() => onSelectAudit && onSelectAudit(audit)}>
-                              <div className="flex flex-col gap-1 sm:gap-1.5">
-                                 <div className="flex items-center gap-1.5 sm:gap-2">
-                                    <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${(audit.data?.executiveSummary?.score ?? 0) >= 75 ? 'bg-emerald-500' : 'bg-amber-500'}`}></span>
-                                    <span className="text-lg sm:text-xl font-black text-slate-900">{audit.data?.executiveSummary?.score ?? 0}%</span>
-                                 </div>
-                                 <span className={`text-[7px] sm:text-[8px] font-black uppercase px-2 py-0.5 rounded border w-fit ${ (audit.data?.executiveSummary?.score ?? 0) >= 75 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100' }`}>
-                                   {(audit.data?.executiveSummary?.score ?? 0) >= 75 ? 'Market Ready' : 'Revision Required'}
-                                 </span>
-                              </div>
-                            </td>
-                            <td className="px-6 sm:px-8 py-6 sm:py-8 text-right">
-                              <div className="flex items-center justify-end gap-2 sm:gap-3">
-                                <button onClick={(e) => { e.stopPropagation(); setIsNoteVisible(isNoteVisible === audit.id ? null : audit.id); }} className={`p-2 sm:p-3 rounded-lg sm:rounded-xl transition-all ${isNoteVisible === audit.id ? 'bg-slate-900 text-white' : 'hover:bg-white border border-transparent hover:border-slate-200 text-slate-400 hover:text-slate-900'}`}><svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg></button>
-                                <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); setPurgeTarget(audit); }} className="p-2 sm:p-3 rounded-lg sm:rounded-xl hover:bg-rose-50 border border-transparent hover:border-rose-100 text-slate-300 hover:text-rose-600 transition-all"><svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg></button>
-                                <button onClick={() => onSelectAudit && onSelectAudit(audit)} className="px-4 py-2 sm:px-6 sm:py-3 bg-slate-900 text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest rounded-xl sm:rounded-2xl hover:bg-slate-800 transition-all">View</button>
-                              </div>
-                            </td>
-                          </tr>
-                          {isNoteVisible === audit.id && (
-                            <tr className="bg-slate-50/50">
-                              <td colSpan={3} className="px-6 sm:px-8 py-6 sm:py-8 border-x border-slate-100">
-                                 <div className="space-y-4 animate-in slide-in-from-top-4 duration-300">
-                                    <div className="flex justify-between items-center"><label className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">Internal Protocol Notes</label><button onClick={() => handleSaveNote(audit.id)} className="px-4 py-1.5 sm:px-6 sm:py-2 bg-emerald-500 text-white text-[8px] sm:text-[9px] font-black uppercase tracking-widest rounded-lg">Save Note</button></div>
-                                    <textarea placeholder="Record client-specific comments..." value={notes[audit.id] || ''} onChange={(e) => setNotes({...notes, [audit.id]: e.target.value})} className="w-full p-4 sm:p-6 rounded-2xl sm:rounded-3xl border-2 border-slate-200 bg-white outline-none focus:border-slate-900 text-xs shadow-inner" rows={3} />
-                                 </div>
-                              </td>
-                            </tr>
-                          )}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-                  </table>
+          {/* ── Tabs ── */}
+          <div className="flex items-center gap-2 mb-6 sm:mb-8 overflow-x-auto pb-1">
+            {(['audits','certs','settings'] as const).map(tab => (
+              <button key={tab} className={`pr-tab ${activeTab === tab ? 'active' : 'inactive'}`} onClick={() => setActiveTab(tab)}>
+                {tab === 'audits' ? `Audits (${audits.length})` : tab === 'certs' ? `Certificates (${certAudits.length})` : 'Settings'}
+              </button>
+            ))}
+          </div>
+
+          {/* ── AUDITS TAB ── */}
+          {activeTab === 'audits' && (
+            <div className="pr-card overflow-hidden">
+              {isLoadingAudits ? (
+                <div className="flex items-center justify-center py-20 gap-3">
+                  <div className="w-5 h-5 border-2 border-slate-200 border-t-slate-900 rounded-full animate-spin"/>
+                  <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Querying Records…</span>
                 </div>
-              </div>
-            </section>
+              ) : audits.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                  <span className="text-5xl">📭</span>
+                  <p className="text-sm text-slate-400 font-medium italic">No verification records initialized.</p>
+                  <button onClick={() => setView('audit')} className="mt-2 px-6 py-3 bg-[#0f172a] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all cursor-pointer border-0">
+                    Run First Audit
+                  </button>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-50">
+                  {audits.map((audit) => {
+                    const score    = audit.data?.executiveSummary?.score ?? 0;
+                    const siteName = audit.data?.overview?.websiteName || 'Unknown Asset';
+                    const favicon  = getFavicon(audit.data?.overview?.websiteUrl);
+                    return (
+                      <React.Fragment key={audit.id}>
+                        <div className={`pr-audit-row ${isDeleting === audit.id ? 'opacity-40 pointer-events-none' : ''}`}
+                          onClick={() => onSelectAudit && onSelectAudit(audit)}>
 
-            <section>
-              <SectionTitle subtitle="Official Issued Endorsements">Verification Assets</SectionTitle>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
-                {audits.filter(a => (a.data?.executiveSummary?.score ?? 0) >= 75).map((audit) => (
-                  <div key={audit.id} onClick={() => onSelectAudit && onSelectAudit(audit)} className="p-8 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border-2 border-[#D4AF37]/20 bg-[#FAF7ED]/30 flex flex-col gap-8 sm:gap-10 group hover:border-[#D4AF37]/50 transition-all shadow-sm cursor-pointer hover:-translate-y-1">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-0 relative">
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-white border border-[#D4AF37]/30 flex items-center justify-center shadow-lg transform group-hover:-rotate-3 transition-transform overflow-hidden relative z-10">
-                           <Logo type="square" className="h-full w-full" />
+                          {/* Favicon */}
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
+                            {favicon
+                              ? <img src={favicon} alt="" className="w-5 h-5 sm:w-6 sm:h-6 object-contain"/>
+                              : <svg className="w-4 h-4 text-slate-200" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17.93V18c0-.55-.45-1-1-1s-1 .45-1 1v1.93C7.06 19.48 4 16.08 4 12c0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93z"/></svg>
+                            }
+                          </div>
+
+                          {/* Info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm sm:text-base font-black text-slate-900 tracking-tight truncate leading-tight">{siteName}</p>
+                            <p className="text-[9px] sm:text-[10px] text-slate-400 font-mono truncate mt-0.5">{audit.url}</p>
+                          </div>
+
+                          {/* Score badge */}
+                          <div className="hidden xs:flex flex-col items-end gap-1 shrink-0">
+                            <span className={`text-base sm:text-lg font-black tracking-tighter ${score >= 75 ? 'text-emerald-600' : 'text-amber-500'}`}>{score}%</span>
+                            <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded border ${score >= 75 ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
+                              {score >= 75 ? 'Market Ready' : 'Needs Work'}
+                            </span>
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex items-center gap-1.5 shrink-0 ml-1" onClick={e => e.stopPropagation()}>
+                            <button onClick={() => setNoteOpen(noteOpen === audit.id ? null : audit.id)}
+                              className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center transition-all cursor-pointer border-0 ${noteOpen === audit.id ? 'bg-slate-900 text-white' : 'bg-transparent text-slate-300 hover:bg-slate-100 hover:text-slate-700'}`}>
+                              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                            </button>
+                            <button onClick={() => setPurgeTarget(audit)}
+                              className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center text-slate-200 hover:bg-rose-50 hover:text-rose-500 transition-all cursor-pointer border-0 bg-transparent">
+                              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            </button>
+                            <button onClick={() => onSelectAudit && onSelectAudit(audit)}
+                              className="hidden sm:flex px-3 sm:px-4 py-1.5 sm:py-2 bg-[#0f172a] text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-slate-800 transition-all cursor-pointer border-0">
+                              View
+                            </button>
+                          </div>
                         </div>
-                        <div className="w-4 h-[2px] bg-[#D4AF37]/30 shrink-0 mx-[-4px]"></div>
-                        <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl sm:rounded-2xl bg-white border border-[#D4AF37]/10 flex items-center justify-center shadow-lg overflow-hidden group-hover:rotate-3 transition-transform relative z-20">
-                          {getFavicon(audit.data?.overview?.websiteUrl) ? (
-                            <img src={getFavicon(audit.data?.overview?.websiteUrl)!} alt="" className="w-7 h-7 sm:w-10 sm:h-10 object-contain" />
-                          ) : (
-                            <span className="text-[7px] sm:text-[8px] font-black text-slate-300">N/A</span>
-                          )}
+
+                        {/* Note panel */}
+                        {noteOpen === audit.id && (
+                          <div className="px-4 sm:px-5 py-4 bg-slate-50 border-t border-slate-100">
+                            <div className="flex justify-between items-center mb-3">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Internal Note</span>
+                              <button onClick={() => alert(`Note saved for ${audit.id.slice(0,8)}`)}
+                                className="px-3 py-1.5 bg-emerald-500 text-white text-[9px] font-black uppercase tracking-widest rounded-lg cursor-pointer border-0 hover:bg-emerald-600 transition-all">
+                                Save
+                              </button>
+                            </div>
+                            <textarea
+                              placeholder="Record client-specific comments…"
+                              value={notes[audit.id] || ''}
+                              onChange={e => setNotes({...notes, [audit.id]: e.target.value})}
+                              className="w-full p-3 rounded-xl border-2 border-slate-200 bg-white outline-none focus:border-slate-900 text-xs font-medium resize-none"
+                              rows={3}
+                            />
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── CERTS TAB ── */}
+          {activeTab === 'certs' && (
+            <div>
+              {certAudits.length === 0 ? (
+                <div className="pr-card flex flex-col items-center justify-center py-20 gap-4">
+                  <span className="text-5xl">🏆</span>
+                  <p className="text-sm text-slate-400 font-medium italic text-center max-w-xs">Certificates are issued for audits scoring 75% or above.</p>
+                  <button onClick={() => setView('audit')} className="mt-2 px-6 py-3 bg-[#0f172a] text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all cursor-pointer border-0">
+                    Run an Audit
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                  {certAudits.map((audit) => {
+                    const score    = audit.data?.executiveSummary?.score ?? 0;
+                    const siteName = audit.data?.overview?.websiteName || 'Unknown';
+                    const favicon  = getFavicon(audit.data?.overview?.websiteUrl);
+                    return (
+                      <div key={audit.id} onClick={() => onSelectAudit && onSelectAudit(audit)}
+                        className="p-5 sm:p-7 rounded-[1.5rem] sm:rounded-[2rem] border-2 border-[#D4AF37]/20 bg-gradient-to-br from-[#FAF7ED]/60 to-white flex flex-col gap-5 group hover:border-[#D4AF37]/50 hover:-translate-y-0.5 transition-all shadow-sm cursor-pointer">
+
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-white border border-[#D4AF37]/20 flex items-center justify-center shadow-sm overflow-hidden">
+                              {favicon ? <img src={favicon} alt="" className="w-6 h-6 object-contain"/> : <Logo type="square" className="h-7 w-7"/>}
+                            </div>
+                            <div>
+                              <p className="text-sm font-black text-slate-900 tracking-tight truncate max-w-[120px] sm:max-w-[150px]">{siteName}</p>
+                              <p className="text-[8px] font-black text-[#927021] uppercase tracking-widest">Certified</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-black tracking-tighter" style={{ color: '#D4AF37' }}>{score}%</p>
+                            <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest">Active 2026</p>
+                          </div>
+                        </div>
+
+                        {/* ID */}
+                        <div className="pt-4 border-t border-[#D4AF37]/15 flex items-center justify-between">
+                          <p className="text-[9px] font-black text-slate-300 uppercase font-mono tracking-widest truncate">ID: {audit.data?.auditId || audit.id.slice(0,12)}</p>
+                          <span className="text-[9px] font-black text-[#927021] group-hover:underline">View Report →</span>
                         </div>
                       </div>
-                      <div className="text-right"><p className="text-[9px] sm:text-[10px] font-black text-[#927021] uppercase tracking-widest">Asset Status</p><p className="text-[10px] sm:text-xs font-bold text-emerald-600 uppercase italic">Active • Valid 2026</p></div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── SETTINGS TAB ── */}
+          {activeTab === 'settings' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+
+              {/* Identity form */}
+              <div className="pr-card p-5 sm:p-7">
+                <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5 sm:mb-6">Identity Settings</p>
+                <form onSubmit={handleUpdateProfile} className="space-y-4">
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Display Name</label>
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} className="pr-input" placeholder="Your name"/>
+                  </div>
+                  <div>
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-2">Email Address</label>
+                    <input type="email" value={user.email} disabled className="pr-input opacity-50" style={{ cursor: 'not-allowed' }}/>
+                  </div>
+                  <button type="submit" disabled={isUpdating}
+                    className={`w-full py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-[0.98] cursor-pointer border-0 ${saveStatus === 'success' ? 'bg-emerald-500 text-white' : saveStatus === 'error' ? 'bg-rose-500 text-white' : 'bg-[#0f172a] text-white hover:bg-slate-800'}`}>
+                    {isUpdating ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
+                        Synchronizing…
+                      </span>
+                    ) : saveStatus === 'success' ? '✓ Protocol Updated' : saveStatus === 'error' ? '✕ Update Failed' : 'Update Identity'}
+                  </button>
+                </form>
+              </div>
+
+              {/* Subscription */}
+              <div className="bg-[#0f172a] rounded-[1.25rem] sm:rounded-[1.5rem] p-5 sm:p-7 text-white relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-40 h-40 bg-[#D4AF37]/5 rounded-full blur-3xl -mr-20 -mt-20"/>
+                <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5 relative z-10">Subscription Protocol</p>
+                <div className="space-y-5 relative z-10">
+                  <div>
+                    <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Current Tier</p>
+                    <p className="text-2xl sm:text-3xl font-black tracking-tighter uppercase" style={{ color: tierColor }}>{tier}</p>
+                  </div>
+                  <div className="h-px bg-white/10"/>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/8">
+                      <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">Audits / mo</p>
+                      <p className="text-base font-black text-white">{tier === 'Free' ? '3' : tier === 'Basic' ? '50' : '∞'}</p>
                     </div>
-                    <div className="space-y-2">
-                      <h4 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight uppercase leading-tight group-hover:text-[#927021] transition-colors truncate">{audit.data?.overview?.websiteName}</h4>
-                      <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[200px]">ID: {audit.data?.auditId || audit.id.slice(0, 10)}</p>
-                    </div>
-                    <div className="pt-6 sm:pt-8 border-t border-[#D4AF37]/10 flex items-center justify-between">
-                       <span className="text-[9px] sm:text-[10px] font-black text-[#927021] uppercase tracking-widest">Score {audit.data?.executiveSummary?.score ?? 0}%</span>
-                       <button disabled={isDownloading === audit.id} onClick={(e) => handleDownloadAsset(e, audit)} className={`flex items-center gap-2 text-[9px] sm:text-[10px] font-black text-slate-900 uppercase tracking-widest transition-all ${isDownloading === audit.id ? 'opacity-50' : 'hover:underline'}`}>
-                          {isDownloading === audit.id ? 'Loading...' : 'Download Report'}
-                       </button>
+                    <div className="p-3 rounded-xl bg-white/5 border border-white/8">
+                      <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest mb-1">PDF Export</p>
+                      <p className="text-base font-black text-white">{tier === 'Free' ? 'No' : 'Yes'}</p>
                     </div>
                   </div>
-                ))}
+                  <button onClick={() => setView('pricing')}
+                    className="w-full py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer border-0 hover:-translate-y-0.5"
+                    style={{ background: '#D4AF37', color: '#0f172a' }}>
+                    Upgrade Plan →
+                  </button>
+                </div>
               </div>
-            </section>
 
-            <section className="bg-slate-900 rounded-[2rem] sm:rounded-[3rem] p-8 sm:p-16 text-white shadow-2xl relative overflow-hidden group">
-              <SectionTitle subtitle="Licensing Management"><span className="text-white">Subscription Protocol</span></SectionTitle>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 sm:gap-16 mt-6 sm:mt-10 relative z-10">
-                 <div className="space-y-6 sm:space-y-8">
-                    <div className="space-y-2"><p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] sm:tracking-[0.4em]">Current Active Tier</p><p className="text-3xl sm:text-4xl font-black tracking-tighter uppercase text-white">{planInfo.type}</p></div>
-                 </div>
-                 <div className="space-y-8 sm:space-y-10">
-                    <div className="p-6 sm:p-8 rounded-[1.5rem] sm:rounded-[2rem] bg-white/5 border border-white/10 backdrop-blur-sm"><p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Auto-Renewal Protocol</p><p className="text-lg sm:text-xl font-black tracking-tight">{planInfo.renewal}</p></div>
-                    <button onClick={() => setView('pricing')} className="w-full py-4 sm:py-5 rounded-xl sm:rounded-2xl bg-[#D4AF37] text-white text-[10px] sm:text-[11px] font-black uppercase tracking-widest hover:bg-[#B8962F] transition-all shadow-xl">Upgrade Tier</button>
-                 </div>
+              {/* Agency teaser */}
+              <div className="pr-card p-5 sm:p-7 relative overflow-hidden">
+                <div className="filter blur-[3px] opacity-30 pointer-events-none select-none space-y-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Team Protocol</p>
+                  {[1,2,3].map(i => (
+                    <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50">
+                      <div className="w-8 h-8 rounded-full bg-slate-200"/>
+                      <div className="h-3 w-24 bg-slate-200 rounded"/>
+                    </div>
+                  ))}
+                </div>
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+                  <span className="text-3xl mb-3">👥</span>
+                  <p className="text-xs font-black text-slate-900 mb-1">Team Collaboration</p>
+                  <span className="text-[8px] font-black text-[#927021] bg-[#D4AF37]/10 px-3 py-1 rounded-full uppercase tracking-wide border border-[#D4AF37]/20 mb-3">Agency Feature</span>
+                  <button onClick={() => setView('pricing')} className="text-[9px] font-black text-slate-700 underline hover:text-slate-900 transition-colors cursor-pointer bg-transparent border-0">
+                    View Agency Plan
+                  </button>
+                </div>
               </div>
-            </section>
 
-            <section className="pt-10 pb-10">
-              <div className="p-8 sm:p-12 rounded-[2rem] sm:rounded-[3rem] bg-rose-50/20 border-2 border-rose-100/30 flex flex-col md:flex-row items-center justify-between gap-10 sm:gap-12 text-center md:text-left">
-                 <div className="space-y-2 sm:space-y-3"><h4 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight uppercase">Registry Governance</h4><p className="text-xs sm:text-sm font-medium text-slate-400 italic">Manage your protocol data export or account deactivation.</p></div>
-                 <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 w-full md:w-auto">
-                    <button onClick={() => alert("Compiling full Registry Data Export...")} className="w-full md:px-10 py-4 sm:py-5 rounded-xl sm:rounded-2xl border-2 border-slate-200 text-slate-400 text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:text-slate-900 hover:border-slate-900 transition-all">Export Data</button>
-                    <button onClick={() => confirm("Terminating all active audit certificates. Proceed?")} className="w-full md:px-10 py-4 sm:py-5 rounded-xl sm:rounded-2xl border-2 border-rose-200 text-rose-500 text-[9px] sm:text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white transition-all">Deactivate</button>
-                 </div>
+              {/* Danger zone */}
+              <div className="pr-card p-5 sm:p-7 border-rose-100/50">
+                <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">Registry Governance</p>
+                <div className="space-y-3">
+                  <button onClick={() => alert('Compiling Registry Data Export…')}
+                    className="w-full py-3 rounded-xl border-2 border-slate-100 text-slate-500 text-[10px] font-black uppercase tracking-widest hover:border-slate-300 hover:text-slate-900 transition-all cursor-pointer bg-transparent">
+                    Export All Data
+                  </button>
+                  <button onClick={() => { if (confirm('Deactivate account? This cannot be undone.')) {} }}
+                    className="w-full py-3 rounded-xl border-2 border-rose-100 text-rose-400 text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 hover:text-white hover:border-rose-500 transition-all cursor-pointer bg-transparent">
+                    Deactivate Account
+                  </button>
+                </div>
               </div>
-            </section>
-          </div>
+            </div>
+          )}
+
         </div>
       </div>
     </>
