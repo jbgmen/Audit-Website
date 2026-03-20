@@ -5,7 +5,8 @@ import {
   collection, 
   query, 
   where, 
-  getDocs, 
+  getDocs,
+  getDoc,
   doc, 
   setDoc, 
   updateDoc, 
@@ -21,13 +22,13 @@ import { AuditRecord, DomainLicense, CryptoPayment, User } from '../types';
 
 // ── Firebase config — fill in your values ────────────────────────────────────
 const firebaseConfig = {
-  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
-  measurementId:     import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
+  apiKey:            "",
+  authDomain:        "velacor",
+  projectId:         "velacore",
+  storageBucket:     "velacore-..app",
+  messagingSenderId: "",
+  appId:             "1:630517813658:web:",
+  measurementId:     "G-"
 };
 
 // Initialize Firebase only once
@@ -91,6 +92,36 @@ export const watchUserTier = (
     console.warn("Tier watcher error:", err.message);
   });
   return unsub;
+};
+
+// ── Get user profile from Firestore (tier + expiry) ─────────────────────────
+export const getUserProfile = async (userId: string): Promise<{ tier?: string; tierExpiresAt?: number; vecWallet?: string } | null> => {
+  try {
+    const userRef  = doc(db, 'users', userId);
+    const snap     = await getDoc(userRef);
+    if (snap.exists()) {
+      const d = snap.data();
+      return {
+        tier:          d.tier          || 'Free',
+        tierExpiresAt: d.tierExpiresAt || 0,
+        vecWallet:     d.vecWallet     || '',
+      };
+    }
+    return null;
+  } catch (err) {
+    console.warn('getUserProfile error:', err);
+    return null;
+  }
+};
+
+// ── Save user profile to Firestore ───────────────────────────────────────────
+export const saveUserProfile = async (userId: string, data: Record<string, any>): Promise<void> => {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, { ...data, updatedAt: Date.now() }, { merge: true });
+  } catch (err) {
+    console.warn('saveUserProfile error:', err);
+  }
 };
 
 // ── Sanitize data for Firestore ───────────────────────────────────────────────
@@ -188,7 +219,7 @@ export const testFirebaseConnection = async () => {
 
 export default {
   db, auth,
-  signOutUser, updateUserTier, watchUserTier,
+  signOutUser, updateUserTier, watchUserTier, getUserProfile, saveUserProfile,
   getUserAudits, recordCryptoPayment, getDomainLicenses,
   saveAuditToFirebase, deleteAuditFromFirebase,
   onAuthStateChange, testFirebaseConnection, isFirebaseInitialized
