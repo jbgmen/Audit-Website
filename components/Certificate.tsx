@@ -57,7 +57,7 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
           position: relative; width: 100%;
           display: flex; justify-content: center; align-items: flex-start;
           --vs: 0.38;
-          height: calc(1750px * var(--vs));
+          height: calc(1540px * var(--vs));
           overflow: visible;
         }
         @media (min-width: 400px) { .vc-cert-vp { --vs: 0.45; } }
@@ -67,7 +67,7 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
         @media (min-width: 1024px){ .vc-cert-vp { --vs: 1.0;  } }
 
         .vc-cert-scaler {
-          width: 800px; height: 1750px;
+          width: 800px; height: 1540px;
           transform: scale(var(--vs));
           transform-origin: top center;
           flex-shrink: 0;
@@ -85,7 +85,7 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
         <div className="vc-cert-scaler">
           <div
             id="official-verification-certificate"
-            className="relative w-[800px] h-[1750px] bg-[#FAF7ED] p-20 pb-16 text-center flex flex-col items-center box-border select-none border border-slate-200"
+            className="relative w-[800px] h-[1540px] bg-[#FAF7ED] p-20 pb-16 text-center flex flex-col items-center box-border select-none border border-slate-200"
           >
             {/* Security borders */}
             <div className="absolute inset-0        border-[20px] border-[#FAF7ED]              z-30 pointer-events-none"/>
