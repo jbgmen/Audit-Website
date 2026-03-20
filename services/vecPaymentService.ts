@@ -135,6 +135,20 @@ export async function payWithVec(
       return { success: false, error: data.error || 'Server verification failed.' }
     }
 
+    // Save tier to localStorage immediately after confirmed payment
+    // This ensures tier persists on refresh even before Firestore watcher fires
+    if (data.tier && data.expiresAt) {
+      try {
+        const lsKey = 'vc_tier_' + userId;
+        localStorage.setItem(lsKey, JSON.stringify({
+          tier:          data.tier,
+          tierExpiresAt: data.expiresAt,
+          txHash:        receipt.hash,
+          updatedAt:     Date.now(),
+        }));
+      } catch (e) {}
+    }
+
     return {
       success:   true,
       tier:      data.tier,
