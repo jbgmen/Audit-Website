@@ -127,20 +127,18 @@ const Certificate: React.FC<CertificateProps> = ({ data }) => {
                 </p>
               </div>
 
-              {/* Score + verdict card */}
-              <div className="w-[85%] flex items-stretch bg-[#FAF7ED] border border-[#D4AF37]/30 rounded-[3rem] overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.02)] min-h-[220px]">
-                <div className="flex-1 flex flex-col items-center justify-center p-10 border-r border-[#D4AF37]/20 bg-white/50">
-                  <span className="text-[11px] font-black text-[#927021] uppercase tracking-widest mb-5">Evaluation Score</span>
-                  <div className="relative">
-                    <span className="text-7xl font-black text-[#0F172A] tracking-tighter leading-none">
-                      {data.executiveSummary?.score ?? 0}%
-                    </span>
-                    <div className="absolute -bottom-2 left-0 w-full h-[3px] bg-[#D4AF37]/20 rounded-full"/>
-                  </div>
+              {/* Score + verdict — inline, no box */}
+              <div className="flex items-center justify-center gap-16 py-6">
+                <div className="text-center">
+                  <p className="text-[10px] font-black text-[#927021] uppercase tracking-[0.5em] mb-2">Evaluation Score</p>
+                  <span className="text-7xl font-black text-[#0F172A] tracking-tighter leading-none">
+                    {data.executiveSummary?.score ?? 0}%
+                  </span>
                 </div>
-                <div className="flex-1 flex flex-col items-center justify-center p-10 bg-white/20">
-                  <span className="text-[11px] font-black text-[#927021] uppercase tracking-widest mb-5">Market Verdict</span>
-                  <span className="text-[28px] font-black text-[#0F172A] uppercase italic tracking-tighter text-center leading-[1.1] max-w-[220px]">
+                <div className="w-px h-20 bg-[#D4AF37]/30"/>
+                <div className="text-center">
+                  <p className="text-[10px] font-black text-[#927021] uppercase tracking-[0.5em] mb-2">Market Verdict</p>
+                  <span className="text-[26px] font-black text-[#0F172A] uppercase italic tracking-tighter leading-tight max-w-[200px] block">
                     {data.executiveSummary?.verdict || 'Evaluated'}
                   </span>
                 </div>
