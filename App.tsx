@@ -62,93 +62,96 @@ const App: React.FC = () => {
   // ── Auth listener + real-time tier watcher ──────────────────────────────────
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
-      // Clean up previous tier watcher
       if (tierWatcherRef.current) {
         tierWatcherRef.current();
         tierWatcherRef.current = null;
       }
 
       if (firebaseUser) {
-        const uid = firebaseUser.uid;
+        const uid    = firebaseUser.uid;
+        const LS_KEY = 'vc_tier_' + uid;
 
-        // ── Step 1: Check localStorage cache (instant, no flicker) ──────────
-        const LS_KEY     = 'vc_tier_' + uid;
-        const lsRaw      = localStorage.getItem(LS_KEY);
-        let cachedTier: string  = 'Free';
-        let cachedExpiry: number = 0;
-        if (lsRaw) {
-          try {
-            const parsed = JSON.parse(lsRaw);
-            // Only use cache if subscription has not expired
-            if (parsed.tier && parsed.tierExpiresAt && Date.now() < parsed.tierExpiresAt) {
-              cachedTier   = parsed.tier;
-              cachedExpiry = parsed.tierExpiresAt;
-            } else {
-              localStorage.removeItem(LS_KEY); // expired — clear
-            }
-          } catch { localStorage.removeItem(LS_KEY); }
-        }
+        // ── Step 1: Set user immediately (Free by default, no flicker) ───────
+        // We show Free first, then update from Firestore — fast on all devices
+        const baseUser = {
+          id:     uid,
+          email:  firebaseUser.email || '',
+          tier:   'Free' as User['tier'],
+          name:   firebaseUser.displayName || firebaseUser.email?.split('@')[0].toUpperCase(),
+          avatar: firebaseUser.photoURL || undefined,
+        };
+        setUser(baseUser);
 
-        // Set user immediately with cached/Free tier (no flicker)
-        setUser({
-          id:            uid,
-          email:         firebaseUser.email || '',
-          tier:          cachedTier as User['tier'],
-          tierExpiresAt: cachedExpiry,
-          name:          firebaseUser.displayName || firebaseUser.email?.split('@')[0].toUpperCase(),
-          avatar:        firebaseUser.photoURL || undefined,
-        });
-
-        // ── Step 2: Load from Firestore (source of truth) ───────────────────
+        // ── Step 2: Firestore is the ONLY source of truth ────────────────────
+        // Works on ALL devices — localStorage is just a speed cache
         try {
           const profile = await getUserProfile(uid);
-          if (profile && profile.tier && profile.tier !== 'Free') {
-            const expiresAt = profile.tierExpiresAt || 0;
-            // Check if subscription is still valid
-            const isActive = expiresAt === 0 || Date.now() < expiresAt;
-            const activeTier = isActive ? profile.tier : 'Free';
+          if (profile) {
+            const expiresAt  = profile.tierExpiresAt || 0;
+            // Subscription valid if no expiry set (legacy) OR not expired yet
+            const isActive   = expiresAt === 0 || Date.now() < expiresAt;
+            const activeTier = (profile.tier && isActive)
+              ? profile.tier as User['tier']
+              : 'Free' as User['tier'];
 
+            // Always update — even if Free — so UI is always in sync
             setUser(prev => prev ? {
               ...prev,
-              tier:          activeTier as User['tier'],
-              tierExpiresAt: profile.tierExpiresAt,
-              vecWallet:     profile.vecWallet,
+              tier:          activeTier,
+              tierExpiresAt: expiresAt,
+              vecWallet:     profile.vecWallet || '',
             } as User : prev);
 
-            // Update localStorage cache
-            if (isActive && profile.tier !== 'Free') {
+            // Update localStorage cache for THIS device (speed only)
+            if (activeTier !== 'Free' && expiresAt > Date.now()) {
               localStorage.setItem(LS_KEY, JSON.stringify({
-                tier:          profile.tier,
-                tierExpiresAt: profile.tierExpiresAt,
-                updatedAt:     Date.now(),
+                tier: activeTier, tierExpiresAt: expiresAt, updatedAt: Date.now(),
               }));
+            } else {
+              localStorage.removeItem(LS_KEY);
             }
           }
         } catch (err) {
-          console.warn('Firestore profile load failed, using cache:', err);
+          // Firestore failed — try localStorage as fallback (same device only)
+          console.warn('Firestore load failed, trying cache:', err);
+          try {
+            const lsRaw = localStorage.getItem(LS_KEY);
+            if (lsRaw) {
+              const parsed = JSON.parse(lsRaw);
+              if (parsed.tier && parsed.tierExpiresAt && Date.now() < parsed.tierExpiresAt) {
+                setUser(prev => prev ? {
+                  ...prev,
+                  tier:          parsed.tier as User['tier'],
+                  tierExpiresAt: parsed.tierExpiresAt,
+                } as User : prev);
+              } else {
+                localStorage.removeItem(LS_KEY);
+              }
+            }
+          } catch {}
         }
 
-        // ── Step 3: Real-time watcher for instant updates ────────────────────
-        // Fires when vec-subscribe API updates Firestore after payment
+        // ── Step 3: Real-time watcher — instant cross-device updates ─────────
+        // When payment confirmed on ANY device → Firestore updates →
+        // onSnapshot fires on ALL logged-in devices simultaneously
         const unsubTier = watchUserTier(uid, (tier, tierExpiresAt, vecWallet) => {
-          const LS_KEY2 = 'vc_tier_' + uid;
-          const isActive = tierExpiresAt === 0 || Date.now() < tierExpiresAt;
-          const activeTier = isActive ? tier : 'Free';
+          const isActive   = tierExpiresAt === 0 || Date.now() < tierExpiresAt;
+          const activeTier = (tier && isActive) ? tier as User['tier'] : 'Free' as User['tier'];
 
           setUser(prev => prev ? {
             ...prev,
-            tier:          activeTier as User['tier'],
+            tier: activeTier,
             tierExpiresAt,
             vecWallet,
           } as User : prev);
 
-          // Save to localStorage cache
-          if (isActive && tier !== 'Free') {
-            localStorage.setItem(LS_KEY2, JSON.stringify({
-              tier, tierExpiresAt, updatedAt: Date.now(),
+          // Update localStorage cache on this device
+          if (activeTier !== 'Free' && tierExpiresAt > Date.now()) {
+            localStorage.setItem(LS_KEY, JSON.stringify({
+              tier: activeTier, tierExpiresAt, updatedAt: Date.now(),
             }));
           } else {
-            localStorage.removeItem(LS_KEY2);
+            localStorage.removeItem(LS_KEY);
           }
         });
         tierWatcherRef.current = unsubTier;
